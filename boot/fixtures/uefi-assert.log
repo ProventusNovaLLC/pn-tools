@@ -1,0 +1,10 @@
+# SYNTHETIC FIXTURE — hand-written for pn-tools tests, not a real board log
+[0000.031] I> [MB1] Started
+[0000.101] I> [MB2] Loading TF-A
+NOTICE:  BL31: v2.7(debug):a8d4b3f
+NVIDIA UEFI Firmware v1.0
+ASSERT_EFI_ERROR (Status = Not Found)
+ASSERT /home/oe-user/oe-workdir/edk2/TegraBootManager.c(146): !EFI_ERROR (Status)
+BdsDxe: failed to load Boot0001 "UEFI Misc Device"
+UEFI Interactive Shell v2.2
+Shell>

@@ -1,0 +1,8 @@
+# SYNTHETIC FIXTURE — hand-written for pn-tools tests, not a real board log
+[0000.031] I> [MB1] Started
+[0000.101] I> [MB2] Tegra boot state machine
+NOTICE:  BL31: v2.7(debug):a8d4b3f
+NVIDIA UEFI Firmware v1.0
+[    0.000000] Booting Linux on physical CPU 0x0000000000 [0x412fd050]
+[    2.310445] VFS: Unable to mount root fs on unknown-block(0,0)
+[    2.310501] Kernel panic - not syncing: VFS: Unable to mount root fs on unknown-block(0,0)

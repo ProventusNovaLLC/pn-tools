@@ -1,0 +1,4 @@
+# SYNTHETIC FIXTURE — hand-written for pn-tools tests, not a real board log
+[0000.031] I> [MB1] Started
+[0000.089] E> CVB EEPROM read failed at 0x50
+[0000.090] E> Failed to read eeprom, error 0x1f1e050d
