@@ -167,7 +167,13 @@ fi
 
 devid_hex=$(printf '0x%02x' "$devid")
 devname="unknown"
+UNSUPPORTED=0
 [ "$devid" -eq $((0x94)) ] && devname="MAX9296A-class"
+# 0xa2 observed on a live MAX96724 rig (bench, 2026-07-28) — decode invalid
+if [ "$devid" -eq $((0xa2)) ]; then
+  devname="MAX96724 (register decode NOT supported)"
+  UNSUPPORTED=1
+fi
 log "DEV_ID       $devid_hex  ($devname)"
 [ "$devname" = "unknown" ] && \
   log "             note: unrecognized DEV_ID — register decode below is" \
@@ -225,9 +231,9 @@ if [ "$PIPE" = "all" ] && [ "$identical_all" -eq 1 ] && \
   say ""
   say "WARN  all four pipe status registers read a constant 0x02."
   say "      This is the MAX96724 signature: the 0x0108+pipe*0x12 decode"
-  say "      does NOT apply there. Do not trust the table below — rely on"
-  say "      the driver's own lock reporting plus capture-and-measure"
-  say "      (v4l2-ctl --stream-mmap --stream-count=30)."
+  say "      does NOT apply there (verified on live hardware: constant"
+  say "      0x02 with cameras attached and the driver bound)."
+  UNSUPPORTED=1
 fi
 
 # ---------------------------------------------------------------- verdicts
@@ -270,6 +276,17 @@ for p in $pipes; do
   say "$(printf '%-22s %5s  %4s  %s' "pipe$p VID_BLK_LEN ($regs b7)" "${P_BLK[$p]}" "0" "$(pf "${P_BLK[$p]}" 0)")"
 done
 say ""
+
+# Unsupported silicon: the raw dump above may still be useful, but a
+# PASS/FAIL verdict from an invalid decode would send you down the wrong
+# bisection branch — refuse to give one.
+if [ "$UNSUPPORTED" -eq 1 ]; then
+  say "VERDICT: NONE — this part's register map is not supported by this"
+  say "  probe (values above are a raw dump, not a diagnosis). Use the"
+  say "  driver's own lock reporting (dmesg) plus capture-and-measure:"
+  say "  v4l2-ctl -d /dev/videoN --stream-mmap --stream-count=30"
+  exit 3
+fi
 
 # One-line diagnosis, mapped to the bisection flowchart stage.
 if [ "$link_up" -eq 0 ]; then
