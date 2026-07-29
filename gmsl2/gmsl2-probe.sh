@@ -139,6 +139,12 @@ bit() { echo $(( ($1 >> $2) & 1 )); }
 log "gmsl2-probe $VERSION — bus $BUS, deserializer $(printf '0x%02x' "$ADDR") ($CHIP)"
 log "read-only probe; no register is ever written"
 log ""
+# DRAFT banner: remove only after the register map passes its datasheet
+# review AND a MAX9296 bench run (tracked in the boot-triage roadmap).
+log "⚠ DRAFT build: the register map has not completed datasheet review."
+log "  Treat verdicts as advisory — confirm with capture-and-measure:"
+log "  v4l2-ctl -d /dev/videoN --stream-mmap --stream-count=30"
+log ""
 
 # ---------------------------------------------------------------- presence
 if ! devid=$(reg_rd16 "$REG_DEV_ID"); then
