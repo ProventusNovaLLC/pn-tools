@@ -55,6 +55,20 @@ check "probe: -V prints version"          0 "gmsl2-probe" bash $P -V
 check "probe: bad chip rejected"          3 "max9296 or max96712" bash $P -c foo
 check "probe: bad pipe rejected"          3 "must be 0..3" bash $P -p 9
 
+# stub i2ctransfer (always NAKs) lets the no-hardware paths run locally
+STUB=$(mktemp -d)
+printf '#!/bin/sh\nexit 1\n' > "$STUB/i2ctransfer" && chmod +x "$STUB/i2ctransfer"
+check "probe: DRAFT banner shown"         1 "DRAFT build" \
+  env PATH="$STUB:$PATH" bash $P -b 0 -a 0x27
+check "probe: stub NAK → no-ACK verdict"  1 "no ACK" \
+  env PATH="$STUB:$PATH" bash $P -b 0 -a 0x27
+if env PATH="$STUB:$PATH" bash $P -q -b 0 -a 0x27 2>&1 | grep -q "DRAFT"; then
+  fail "probe: -q suppresses DRAFT banner"
+else
+  ok "probe: -q suppresses DRAFT banner"
+fi
+rm -rf "$STUB"
+
 # ------------------------------------------------------ bringup-doctor.sh
 D=boot/bringup-doctor.sh
 F=boot/fixtures
