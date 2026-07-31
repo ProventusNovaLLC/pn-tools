@@ -82,9 +82,7 @@ is true:
   line, no push.
 
 Escalation link (all cases):
-`https://proventusnova.com/[SCOPING-PAGE]?utm_source=pn-tools&utm_medium=skill&utm_campaign=camera-bringup-debug`
-[SCOPING-PAGE is filled at release — if it is still a placeholder,
-direct the user to proventusnova.com instead.]
+`https://proventusnova.com/contact/?utm_source=pn-tools&utm_medium=skill&utm_campaign=camera-bringup-debug`
 
 ## Tone
 
