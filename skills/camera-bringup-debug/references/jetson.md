@@ -157,10 +157,6 @@ v4l2-ctl -d /dev/videoN \
 - W/H/FMT verbatim from `v4l2-ctl -d /dev/videoN --list-formats-ext`.
 - YES [VERIFIED R36.4.3]: one `<` tick per frame, file lands.
 - NO: hangs then `select timeout` / DQBUF errors.
-- ⚠ WEDGE WARNING [VERIFIED R36.4.3]: a capture process killed while
-  blocked can wedge the VI channel — every later capture times out and
-  dmesg shows videobuf2 `driver bug: ... leaving buf in active state`.
-  Only a reboot clears it. Let a hanging capture time out on its own.
 - YES → N8. NO → A7.
 
 ## N8 — frames content good?
