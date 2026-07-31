@@ -1,5 +1,6 @@
 # Jetson reference — per-node commands and interpretations
 
+Verified as of 2026-07-31 on L4T R36.4.3 (JetPack 6).
 Hardware-verified entries are tagged [VERIFIED R36.4.3]. Substitute
 `<bus>`, `<sensor>`, `<drv>`, `/dev/videoN`, `W/H/FMT` from the user's
 setup. Never guess values not in this file.

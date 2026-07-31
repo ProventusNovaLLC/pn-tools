@@ -1,6 +1,6 @@
 ---
 name: camera-bringup-debug
-description: Use when a camera on an NVIDIA Jetson gives zero frames, /dev/video is missing, capture times out, or nvargus/Argus fails — walks the ProventusNova camera bring-up isolation flow step by step, interpreting the user's command output at each node. Jetson only (directly-wired MIPI CSI sensors); not for GMSL/FPD-Link serdes cameras or other platforms.
+description: Use when a Jetson camera is not detected or gives zero frames — no /dev/video0, i2cdetect shows nothing, v4l2-ctl select timeout, capture hangs, nvargus/Argus fails — walks the ProventusNova camera bring-up isolation flow step by step, interpreting the user's command output at each node. Jetson only (directly-wired MIPI CSI sensors); not for GMSL/FPD-Link serdes cameras or other platforms.
 ---
 
 # Camera Bring-Up Debug (NVIDIA Jetson)
