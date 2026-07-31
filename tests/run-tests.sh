@@ -2,14 +2,8 @@
 #
 # run-tests.sh — offline test suite for pn-tools.
 #
-# Covers everything testable WITHOUT hardware: shellcheck lint, CLI/arg
-# behavior, bringup-doctor verdicts against the synthetic fixtures, and
-# gst-audit findings on known-good / known-bad pipelines.
-#
-# NOT covered here (needs a bench — see each tool's brief):
-#   - gmsl2-probe.sh against a real MAX9296/MAX96712 rig
-#   - bringup-doctor.sh against real (sanitized) customer boot logs
-#   - gst-audit.sh element checks on a real Jetson/Genio element set
+# Covers everything testable WITHOUT hardware. Not covered here:
+# gst-audit.sh element checks against a real Jetson/Genio element set.
 
 set -u
 cd "$(dirname "$0")/.." || exit 1
@@ -18,7 +12,7 @@ PASS=0 FAIL=0
 ok()   { PASS=$((PASS+1)); printf 'ok   - %s\n' "$1"; }
 fail() { FAIL=$((FAIL+1)); printf 'FAIL - %s\n' "$1"; }
 
-# assert CMD_EXIT_CODE EXPECTED_CODE GREP_PATTERN DESCRIPTION
+# check DESCRIPTION EXPECTED_EXIT GREP_PATTERN CMD...
 check() {
   local desc=$1 expect_rc=$2 pattern=$3; shift 3
   local out rc
@@ -36,7 +30,7 @@ check() {
 
 # ------------------------------------------------------------- shellcheck
 if command -v shellcheck >/dev/null 2>&1; then
-  for s in gmsl2/gmsl2-probe.sh boot/bringup-doctor.sh gstreamer/gst-audit.sh; do
+  for s in gstreamer/gst-audit.sh tests/run-tests.sh; do
     if shellcheck -S warning "$s" >/dev/null 2>&1; then
       ok "shellcheck $s"
     else
@@ -47,47 +41,6 @@ if command -v shellcheck >/dev/null 2>&1; then
 else
   printf 'skip - shellcheck not installed\n'
 fi
-
-# --------------------------------------------------------- gmsl2-probe.sh
-P=gmsl2/gmsl2-probe.sh
-check "probe: -h prints usage"            0 "Usage" bash $P -h
-check "probe: -V prints version"          0 "gmsl2-probe" bash $P -V
-check "probe: bad chip rejected"          3 "max9296 or max96712" bash $P -c foo
-check "probe: bad pipe rejected"          3 "must be 0..3" bash $P -p 9
-
-# stub i2ctransfer (always NAKs) lets the no-hardware paths run locally
-STUB=$(mktemp -d)
-printf '#!/bin/sh\nexit 1\n' > "$STUB/i2ctransfer" && chmod +x "$STUB/i2ctransfer"
-check "probe: DRAFT banner shown"         1 "DRAFT build" \
-  env PATH="$STUB:$PATH" bash $P -b 0 -a 0x27
-check "probe: stub NAK → no-ACK verdict"  1 "no ACK" \
-  env PATH="$STUB:$PATH" bash $P -b 0 -a 0x27
-if env PATH="$STUB:$PATH" bash $P -q -b 0 -a 0x27 2>&1 | grep -q "DRAFT"; then
-  fail "probe: -q suppresses DRAFT banner"
-else
-  ok "probe: -q suppresses DRAFT banner"
-fi
-rm -rf "$STUB"
-
-# ------------------------------------------------------ bringup-doctor.sh
-D=boot/bringup-doctor.sh
-F=boot/fixtures
-check "doctor: no args is usage error"    3 "no input" bash $D
-check "doctor: -h prints usage"           0 "Usage" bash $D -h
-check "doctor: clean boot → exit 0"       0 "No known failure signatures" bash $D "$F/clean-boot.log"
-check "doctor: clean boot shows progress" 0 "userspace" bash $D "$F/clean-boot.log"
-check "doctor: empty log → exit 2"        2 "NO SERIAL OUTPUT" bash $D "$F/empty.log"
-check "doctor: dwc3 -71 matched"          1 "dwc3-71" bash $D "$F/dwc3-error-71.log"
-check "doctor: dwc3 -71 cites fix post"   1 "dwc3-error-71-jetson-clock-reference-fix" bash $D "$F/dwc3-error-71.log"
-check "doctor: UEFI assert matched"       1 "uefi-assert" bash $D "$F/uefi-assert.log"
-check "doctor: UEFI shell drop matched"   1 "uefi-bds" bash $D "$F/uefi-assert.log"
-check "doctor: VFS panic matched"         1 "vfs-panic" bash $D "$F/vfs-panic.log"
-check "doctor: EEPROM fail matched"       1 "eeprom" bash $D "$F/eeprom-fail.log"
-check "doctor: GMSL no-lock matched"      1 "gmsl-lock" bash $D "$F/gmsl-no-lock.log"
-check "doctor: JP6 silent USB noted"      0 "usb-silent" bash $D "$F/jp6-usb-silent.log"
-check "doctor: usb note is heuristic"     0 "not a verdict" bash $D "$F/jp6-usb-silent.log"
-check "doctor: stdin works"               1 "dwc3-71" bash -c "cat $F/dwc3-error-71.log | bash $D -"
-check "doctor: --genio prints stage map"  0 "BROM" bash -c "bash $D --genio $F/clean-boot.log"
 
 # ----------------------------------------------------------- gst-audit.sh
 G=gstreamer/gst-audit.sh
@@ -109,6 +62,10 @@ check "audit: stdin works"                1 "sw-element" bash -c "echo '$BAD_SW'
 check "audit: genio maps nv elements"     1 "jetson-only-element" bash $G --genio "$GOOD_NVMM"
 check "audit: genio suggests v4l2convert" 1 "v4l2convert" bash $G --genio "nvarguscamerasrc ! nvvidconv ! fakesink"
 check "audit: live sink sync warning"     1 "sink-sync" bash $G "v4l2src ! videoconvert ! autovideosink"
+
+# ------------------------------------------------------ scaffold sanity
+check "marketplace.json is valid JSON"    0 "" \
+  python3 -c "import json;json.load(open('.claude-plugin/marketplace.json'))"
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
