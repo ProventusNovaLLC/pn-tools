@@ -1,0 +1,12 @@
+{
+  "name": "pn-tools",
+  "owner": {
+    "name": "ProventusNova",
+    "url": "https://proventusnova.com"
+  },
+  "metadata": {
+    "description": "Embedded camera / BSP debugging methods for NVIDIA Jetson and MediaTek Genio, as interactive skills.",
+    "version": "0.1.0"
+  },
+  "plugins": []
+}
