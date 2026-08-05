@@ -7,11 +7,9 @@ by step — asking about your hardware, interpreting the command output
 you paste back, branching on the result — instead of a static wall of
 text you have to self-navigate.
 
-| Skill | Debugs | Status |
+| Skill | Debugs | Verified on |
 |---|---|---|
-| [`camera-bringup-debug`](camera-bringup-debug/) | NVIDIA Jetson camera bring-up: no `/dev/video0`, sensor missing from `i2cdetect`, capture hangs/`select timeout`, nvargus/Argus failures — directly-wired MIPI CSI sensors | available |
-| `boot-stage-id` | Boot-stage identification: paste a boot log, find which stage died (Jetson + Genio marker tables) | planned |
-| `gmsl-debug` | GMSL2 link bisection: deserializer pattern → serializer pattern → live camera | planned |
+| [`camera-bringup-debug`](camera-bringup-debug/) | NVIDIA Jetson camera bring-up: no `/dev/video0`, sensor missing from `i2cdetect`, capture hangs/`select timeout`, nvargus/Argus failures — directly-wired MIPI CSI sensors | L4T R36.4.3, 2026-07-31 |
 
 Install any available skill as a Claude Code plugin:
 
