@@ -51,6 +51,46 @@ class LauncherTest(unittest.TestCase):
         self.assertFalse(os.path.exists(l.fifo))
         shutil.rmtree(tmp)
 
+    def test_unreadable_dot_is_retried_then_counted(self):
+        tmp = tempfile.mkdtemp()
+        script = os.path.join(tmp, "child.py")
+        with open(script, "w") as fh:
+            fh.write("import os, time\nd = os.environ['GST_DEBUG_DUMP_DOT_DIR']\nos.mkdir(os.path.join(d, 'not-a-file.dot'))\n"
+                     "open(os.environ['GST_DEBUG_FILE'], 'w').close()\ntime.sleep(1.5)\n")
+        dots = []
+        l = Launcher([sys.executable, script], lambda s: None, dots.append, workdir=tmp)
+        l.start()
+        l.wait(timeout=10)
+        l.stop()
+        self.assertEqual(dots, [])
+        self.assertEqual(l.dots_dropped, 1)              # a directory named *.dot: unreadable, retried, then given up on
+        l.cleanup()
+        shutil.rmtree(tmp)
+
+    def test_stop_after_child_already_exited_keeps_exit_code(self):
+        tmp = tempfile.mkdtemp()
+        script = os.path.join(tmp, "quick.py")
+        with open(script, "w") as fh:
+            fh.write("import os, sys\nopen(os.environ['GST_DEBUG_FILE'], 'w').close()\nsys.exit(3)\n")
+        l = Launcher([sys.executable, script], lambda s: None, lambda s: None, workdir=tmp)
+        l.start()
+        time.sleep(1.0)                                   # child is long gone and unreaped when stop() runs
+        self.assertEqual(l.stop(), 3)
+        l.cleanup()
+        shutil.rmtree(tmp)
+
+    def test_cleanup_removes_auto_created_workdir(self):
+        script = os.path.join(tempfile.mkdtemp(), "noop.py")
+        with open(script, "w") as fh:
+            fh.write("import os\nopen(os.environ['GST_DEBUG_FILE'], 'w').close()\n")
+        l = Launcher([sys.executable, script], lambda s: None, lambda s: None)      # no workdir= → we own it
+        l.start()
+        l.wait(timeout=10)
+        l.stop()
+        self.assertTrue(os.path.isdir(l.workdir))
+        l.cleanup()
+        self.assertFalse(os.path.exists(l.workdir))
+
     def test_stop_kills_a_stubborn_child(self):
         tmp = tempfile.mkdtemp()
         script = os.path.join(tmp, "stubborn.py")

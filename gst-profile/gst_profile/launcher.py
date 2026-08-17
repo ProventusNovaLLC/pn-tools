@@ -1,6 +1,7 @@
 """Spawn the pipeline/app under the tracer environment, read the FIFO, own the lifecycle."""
 import os
 import select
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -43,6 +44,7 @@ class Launcher:
         self.element_latency = element_latency
         self.lite = lite
         self.tracers = tracers
+        self._own_workdir = workdir is None
         self.workdir = workdir or tempfile.mkdtemp(prefix="gst-profile-")
         self.fifo = os.path.join(self.workdir, "trace.fifo")
         self.dot_dir = os.path.join(self.workdir, "dot")
@@ -53,7 +55,10 @@ class Launcher:
         self._dot_thread: Optional[threading.Thread] = None
         self.lines_read = 0
         self.dropped = 0
+        self.dots_dropped = 0
         self._seen_dots: set = set()
+        self._dot_attempts: Dict[str, int] = {}
+        self.DOT_MAX_ATTEMPTS = 3
 
     def start(self):
         os.makedirs(self.dot_dir, exist_ok=True)
@@ -115,14 +120,23 @@ class Launcher:
             except OSError:
                 names = []
             for n in names:
-                if n.endswith(".dot") and n not in self._seen_dots:
-                    self._seen_dots.add(n)
-                    time.sleep(0.05)              # let the writer finish
-                    try:
-                        with open(os.path.join(self.dot_dir, n)) as fh:
-                            self.on_dot(fh.read())
-                    except OSError:
-                        pass
+                if not n.endswith(".dot") or n in self._seen_dots:
+                    continue
+                time.sleep(0.05)              # let the writer finish
+                try:
+                    with open(os.path.join(self.dot_dir, n)) as fh:
+                        text = fh.read()
+                except OSError:
+                    self._dot_attempts[n] = self._dot_attempts.get(n, 0) + 1
+                    if self._dot_attempts[n] >= self.DOT_MAX_ATTEMPTS:      # give up, but say so
+                        self._seen_dots.add(n)
+                        self.dots_dropped += 1
+                    continue                                                # retry on the next scan
+                self._seen_dots.add(n)                                      # delivered exactly once
+                try:
+                    self.on_dot(text)
+                except Exception:
+                    self.dots_dropped += 1
             if self.proc and self.proc.poll() is not None:
                 break
             time.sleep(0.25)
@@ -154,6 +168,8 @@ class Launcher:
                     continue
         else:
             self.exit_code = self.proc.returncode if self.proc else None
+        if self.proc and self.exit_code is None:            # child died between poll() and killpg(): reap it
+            self.exit_code = self.proc.poll()
         self._stop.set()
         if self._reader:
             self._reader.join(timeout=2)
@@ -162,7 +178,10 @@ class Launcher:
         return self.exit_code
 
     def cleanup(self):
+        """Remove the FIFO; when the workdir was created by us (no `workdir=` given), remove it entirely."""
         try:
             os.unlink(self.fifo)
         except OSError:
             pass
+        if self._own_workdir:
+            shutil.rmtree(self.workdir, ignore_errors=True)
