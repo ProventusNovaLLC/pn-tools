@@ -130,14 +130,19 @@ class Graph:
             self.elements[owner].pads[f["name"]] = "src" if int(f.get("pad-direction", 0)) == 1 else "sink"
             return False
         if rec.kind == "buffer":
-            src = self._pad_ix.get(int(f.get("pad-ix", -1)))
-            sink = self._pad_ix.get(int(f.get("peer-pad-ix", -1)))
-            if src and sink and f"{src}->{sink}" not in self.links:
-                el = self.elements.get(src.split(":")[0])
-                if el and el.pads.get(src.split(":")[1]) == "sink":     # record is from the receiving side; flip
-                    src, sink = sink, src
-                self.add_link(src, sink)
-                return True
+            a = self._pad_ix.get(int(f.get("pad-ix", -1)))
+            b = self._pad_ix.get(int(f.get("peer-pad-ix", -1)))
+            if not a or not b:
+                return False
+            el = self.elements.get(a.split(":")[0])
+            if el and el.pads.get(a.split(":")[1]) == "sink":           # record is from the receiving side; flip
+                src, sink = b, a
+            else:
+                src, sink = a, b
+            if f"{src}->{sink}" in self.links:
+                return False
+            self.add_link(src, sink)
+            return True
         return False
 
     def link_for_stats_buffer(self, rec) -> Optional[str]:
