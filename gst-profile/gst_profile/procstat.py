@@ -78,16 +78,21 @@ class ProcStat:
             except OSError:
                 tids = []
             cur: Dict[int, int] = {}
+            comms: Dict[int, str] = {}
             for tid in tids:
                 j = self._stat_jiffies(os.path.join(task_dir, str(tid), "stat"))
                 if j is None:
                     continue
                 cur[tid] = j
-                if tid not in self._comm:
-                    self._comm[tid] = (self._read(os.path.join(task_dir, str(tid), "comm")) or "").strip()
-                if tid in self._prev_threads and elapsed and elapsed > 0:
-                    smp.threads[f"{tid}:{self._comm[tid]}"] = round(100.0 * (j - self._prev_threads[tid]) / self.hz / elapsed, 1)
+                comm = (self._read(os.path.join(task_dir, str(tid), "comm")) or "").strip()
+                comms[tid] = comm
+                prev = self._prev_threads.get(tid)
+                # a tid can be recycled between samples: a changed name or a jiffies count that went
+                # backwards means "new thread" — skip it this round, it is measured from the next sample
+                if prev is not None and elapsed and elapsed > 0 and j >= prev and self._comm.get(tid) == comm:
+                    smp.threads[f"{tid}:{comm}"] = round(100.0 * (j - prev) / self.hz / elapsed, 1)
             self._prev_threads = cur
+            self._comm = comms                                   # pruned to live threads every sample
         self._prev_time = now
         return smp
 

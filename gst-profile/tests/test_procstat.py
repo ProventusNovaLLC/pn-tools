@@ -32,6 +32,25 @@ class ProcStatTest(unittest.TestCase):
         self.assertEqual(s.proc_pct, 50.0)
         self.assertEqual(s.threads, {"43:videotestsrc0:s": 30.0})
 
+    def test_tid_reuse_is_not_reported_as_a_delta(self):
+        root = tempfile.mkdtemp()
+        def snapshot(tid_comm, tid_j):
+            write(f"{root}/stat", "cpu  1 0 0 1 0 0 0 0 0 0\ncpu0 1 0 0 1 0 0 0 0 0 0\n")
+            write(f"{root}/7/stat", STAT_TEMPLATE.format(pid=7, comm="app", ut=0, st=0))
+            write(f"{root}/7/task/9/stat", STAT_TEMPLATE.format(pid=9, comm=tid_comm, ut=tid_j, st=0))
+            write(f"{root}/7/task/9/comm", tid_comm + "\n")
+        ps = ProcStat(7, root=root)
+        ps.hz = 100
+        snapshot("oldthread", 500)                # a busy thread that then dies…
+        ps.sample(10.0)
+        snapshot("newthread", 3)                  # …and the OS hands tid 9 to an unrelated new thread
+        s = ps.sample(11.0)
+        self.assertEqual(s.threads, {})           # no negative/mislabelled delta reported this round
+        self.assertEqual(ps._comm, {9: "newthread"})
+        snapshot("newthread", 53)
+        s = ps.sample(12.0)
+        self.assertEqual(s.threads, {"9:newthread": 50.0})   # measured cleanly from the next sample
+
     def test_thread_to_element_truncation(self):
         ids = ["nvarguscamerasrc0", "nvvidconv0", "queue0", "nvv4l2h264enc0"]
         self.assertEqual(thread_to_element("nvarguscamerasr", ids), "nvarguscamerasrc0")   # 15-char comm truncation
