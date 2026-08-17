@@ -6,6 +6,7 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 out="$here/fixtures/local-videotestsrc"
 tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$out" "$tmp/dot"
 GST_DEBUG_NO_COLOR=1 \
 GST_TRACERS="latency(flags=pipeline+element+reported);stats" \
@@ -16,5 +17,4 @@ gst-launch-1.0 -q videotestsrc num-buffers=60 is-live=true \
   ! video/x-raw,width=320,height=240,framerate=30/1 ! videoconvert ! queue ! fakesink sync=false
 gzip -c "$tmp/trace.log" > "$out/trace-run.log.gz"
 cp "$tmp"/dot/*PAUSED_PLAYING.dot "$out/pipeline.PAUSED_PLAYING.dot"
-rm -rf "$tmp"
 echo "fixtures written to $out:"; ls -la "$out"
