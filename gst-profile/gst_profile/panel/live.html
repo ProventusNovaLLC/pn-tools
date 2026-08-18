@@ -32,18 +32,19 @@
 </main>
 <script>
  const $=id=>document.getElementById(id);
+ const esc=v=>String(v==null?"":v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
  let verdict=null;
  function sevClass(s){return s==='high'?'high':s==='medium'?'medium':''}
  function render(){
    if(!verdict)return;
    $('header').textContent=verdict.header||'';
-   $('hot').innerHTML=(verdict.hot||[]).map(h=>`<span class="chip">${h.element} <b>${h.share_pct}%</b></span>`).join('');
+   $('hot').innerHTML=(verdict.hot||[]).map(h=>`<span class="chip">${esc(h.element)} <b>${esc(h.share_pct)}%</b></span>`).join('');
    $('findings').innerHTML=(verdict.findings||[]).map(f=>`
      <div class="f ${sevClass(f.severity)}">
-       <div class="sev">${f.severity} · ${f.rule}${f.heuristic&&f.severity==='info'&&f.rule!=='HOT'&&f.rule!=='OK'?' · <span class="heur">heuristic</span>':''}</div>
-       <div><strong>${f.title}</strong></div>
-       <div class="why">${f.why||''}</div>
-       <div class="fix">→ ${f.fix_text||''}</div>
+       <div class="sev">${esc(f.severity)} · ${esc(f.rule)}${f.heuristic&&f.severity==='info'&&f.rule!=='HOT'&&f.rule!=='OK'?' · <span class="heur">heuristic</span>':''}</div>
+       <div><strong>${esc(f.title)}</strong></div>
+       <div class="why">${esc(f.why||'')}</div>
+       <div class="fix">→ ${esc(f.fix_text||'')}</div>
      </div>`).join('');
  }
  if(window.__VERDICT__){                       // static report: render the embedded verdict, no stream

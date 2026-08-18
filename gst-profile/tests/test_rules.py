@@ -34,6 +34,11 @@ class RulesTest(unittest.TestCase):
         for r in ("SW", "SYNC", "ENC", "VIC", "CAPS"):
             self.assertIn(r, fs, r)
 
+    def test_zc_silent_on_encoded_sysmem_link(self):
+        # all-hardware encode->decode loopback: the h264 sysmem link between codecs is normal,
+        # NOT a zero-copy break — ZC must not fire on an encoded-bitstream sysmem link.
+        self.assertNotIn("ZC", self.fired(load("jetson-hw-loopback.json")))
+
     def test_zc_silent_on_clean_nvmm_pipeline(self):
         s = load("jetson-zc-break.json")
         for l in s["graph"]["links"]:

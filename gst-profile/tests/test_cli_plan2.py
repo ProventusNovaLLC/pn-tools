@@ -32,6 +32,14 @@ class AnalyzeVerdictTest(unittest.TestCase):
             rules.VERIFIED_RULES.clear()
         self.assertEqual(code, 1)                       # a high/medium finding -> EXIT_FINDINGS
 
+    def test_analyze_and_report_reject_a_non_session_json(self):
+        bad = os.path.join(tempfile.mkdtemp(), "bad.json")
+        with open(bad, "w") as fh:
+            fh.write('{"not": "a session"}')
+        with redirect_stderr(io.StringIO()):
+            self.assertEqual(run_cli(["analyze", bad])[0], 3)
+            self.assertEqual(run_cli(["report", bad, "-o", os.path.join(tempfile.mkdtemp(), "r.html")])[0], 3)
+
     def test_report_is_self_contained_html(self):
         out_html = os.path.join(tempfile.mkdtemp(), "r.html")
         code, _, _ = run_cli(["report", os.path.join(FX, "jetson-zc-break.json"), "-o", out_html])
@@ -69,6 +77,19 @@ class LiveRunTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("gst-profile verdict", out)
         self.assertTrue(os.path.exists(out_json))
+
+    def test_live_run_on_a_busy_port_fails_cleanly(self):
+        # occupy a port, then a live run on it must exit 3 (usage) and not hang or orphan the child
+        import socket as _sock
+        s = _sock.socket(); s.bind(("127.0.0.1", 0)); s.listen(1)
+        busy = s.getsockname()[1]
+        try:
+            with redirect_stderr(io.StringIO()):
+                code, _, err = run_cli(["run", self.PIPE, "--duration", "5s", "--port", str(busy),
+                                        "--host", "127.0.0.1", "--out", os.path.join(tempfile.mkdtemp(), "s.json")])
+            self.assertEqual(code, 3)
+        finally:
+            s.close()
 
     def test_live_run_streams_ticks_then_exits(self):
         # capture runs on THIS (main) thread; a background reader connects and collects the live stream.

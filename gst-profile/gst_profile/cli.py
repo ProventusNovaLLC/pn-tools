@@ -103,10 +103,14 @@ def _verdict_of(session_dict):
     return a, fs
 
 
+def _has_high_or_medium(findings) -> bool:
+    return any(f.severity in ("high", "medium") for f in findings)
+
+
 def _print_verdict(session_dict) -> int:
     a, fs = _verdict_of(session_dict)
     print(verdict.render_text(a, fs))
-    return EXIT_FINDINGS if any(f.severity in ("high", "medium") for f in fs) else EXIT_CLEAN
+    return EXIT_FINDINGS if _has_high_or_medium(fs) else EXIT_CLEAN
 
 
 def _findings_payload(session_dict):
@@ -119,8 +123,12 @@ def _capture(session, cmd, mode, args, caps=None) -> int:
     caps = caps or check()
     session.target = caps.to_target()
     session.graph.platform = caps.platform
-    duration = _parse_duration(args.duration)
-    hold = _parse_duration(args.hold) if getattr(args, "hold", None) else 0.0
+    try:
+        duration = _parse_duration(args.duration)
+        hold = _parse_duration(args.hold) if getattr(args, "hold", None) else 0.0
+    except ValueError:
+        print("gst-profile: --duration/--hold must be a number like 30s, 2m, 500ms", file=sys.stderr)
+        return EXIT_USAGE
     live = not args.no_ui
     lock = threading.Lock()
     broker = srv.Broker() if live else None
@@ -151,9 +159,14 @@ def _capture(session, cmd, mode, args, caps=None) -> int:
     stopping = {"flag": False}
 
     if live:
-        server = srv.LiveServer(broker, lambda: _snapshot(session, lock), lambda req: _control(req, session, lock, stopping),
-                                _page(), host=args.host, port=args.port)
-        server.start()
+        try:
+            server = srv.LiveServer(broker, lambda: _snapshot(session, lock), lambda req: _control(req, session, lock, stopping),
+                                    _page(), host=args.host, port=args.port)
+            server.start()
+        except OSError as e:
+            launcher.stop(); tegra.stop(); launcher.cleanup()
+            print(f"gst-profile: cannot open the live view on {args.host}:{args.port} ({e}); try --port 0 or --no-ui", file=sys.stderr)
+            return EXIT_USAGE
         broker.publish("status", {"state": "capturing", "port": server.port}, sticky=True)
         url_host = "127.0.0.1" if args.host in ("0.0.0.0", "::") else args.host
         print(f"gst-profile: live view  http://{url_host}:{server.port}   (Ctrl-C to stop)", file=sys.stderr)
@@ -212,7 +225,7 @@ def _capture(session, cmd, mode, args, caps=None) -> int:
 
         a, fs = _verdict_of(d)
         print(verdict.render_text(a, fs))
-        exit_findings = any(f.severity in ("high", "medium") for f in fs)
+        exit_findings = _has_high_or_medium(fs)
 
         if server:
             broker.publish("findings", verdict.to_dict(a, fs), sticky=True)
@@ -305,7 +318,12 @@ def cmd_analyze(args) -> int:
     if not os.path.exists(args.path):
         print(f"gst-profile: {args.path} not found", file=sys.stderr)
         return EXIT_USAGE
-    d = _load_session_dict(args.path, args.dot)
+    try:
+        d = _load_session_dict(args.path, args.dot)
+        _verdict_of(d)                                   # validate it is a usable session
+    except (KeyError, ValueError, TypeError) as e:
+        print(f"gst-profile: {args.path} is not a usable session ({e})", file=sys.stderr)
+        return EXIT_USAGE
     if args.out:
         with open(args.out, "w") as fh:
             fh.write(json.dumps(d))
@@ -333,8 +351,12 @@ def cmd_report(args) -> int:
     if not os.path.exists(args.path):
         print(f"gst-profile: {args.path} not found", file=sys.stderr)
         return EXIT_USAGE
-    d = _load_session_dict(args.path)
-    payload = _findings_payload(d)
+    try:
+        d = _load_session_dict(args.path)
+        payload = _findings_payload(d)
+    except (KeyError, ValueError, TypeError) as e:
+        print(f"gst-profile: {args.path} is not a usable session ({e})", file=sys.stderr)
+        return EXIT_USAGE
     meta = f"{d['session'].get('mode','?')} · {d['session'].get('duration_s',0)}s · {len(d['series']['t'])} windows"
     page = _page()
     def _embed(obj):

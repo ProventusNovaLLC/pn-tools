@@ -63,6 +63,7 @@ class LinkStat:
     src_el: str
     sink_el: str
     memory: str
+    media: str                          # "video/x-raw", "video/x-h264", ...  (ZC only cares about raw frames)
     fmt: Optional[str]
     fps: Optional[float]                # peak fps over the run (source cadence proxy)
     bytes_s: Optional[float]
@@ -127,7 +128,7 @@ def build(session: dict) -> Analysis:
         se, ke = l["src"].split(":")[0], l["sink"].split(":")[0]
         links.append(LinkStat(
             id=l["id"], src=l["src"], sink=l["sink"], src_el=se, sink_el=ke,
-            memory=l.get("memory", "unknown"), fmt=l.get("format"),
+            memory=l.get("memory", "unknown"), media=l.get("media", ""), fmt=l.get("format"),
             fps=_max(col.get("fps", [])), bytes_s=_max(col.get("bytes_s", [])),
             ever_stalled=any(col.get("stalled", [])),
             stall_interior=_sustained_interior_stall(col.get("stalled", [])),

@@ -100,7 +100,9 @@ class ZeroCopyRule(Rule):
     HW = ("nvmm", "dmabuf")
     def evaluate(self, a):
         # order the links into linear position by walking from source elements
-        sysmem = [l for l in a.links if l.memory == "sysmem"]
+        # only a raw-frame sysmem link is a zero-copy break; an encoded (h264/h265/jpeg) sysmem
+        # link between hardware codecs is normal and must not be flagged.
+        sysmem = [l for l in a.links if l.memory == "sysmem" and (l.media in ("", "video/x-raw"))]
         out = []
         seen_islands = set()
         for l in sysmem:
@@ -122,22 +124,25 @@ class ZeroCopyRule(Rule):
                     fix_text=f"Keep the path in device memory across {l.src_el}->{l.sink_el} (use nvvidconv, or negotiate NVMM caps so no element copies to system memory).",
                     fix_patch={"kind": "set-caps", "link": l.id, "to": "video/x-raw(memory:NVMM)"}))
         return out
-    def _reaches_hw(self, a, el, upstream, depth=0):
+    def _reaches_hw(self, a, el, upstream, depth=0, seen=None):
         """Return the id of the nearest element across a hardware-memory link on the given side, or None."""
         if depth > 32:
             return None
-        neigh = a.links
-        for l in neigh:
+        seen = seen if seen is not None else set()
+        if el in seen:
+            return None
+        seen.add(el)
+        for l in a.links:
             if upstream and l.sink_el == el:
                 if l.memory in self.HW:
                     return l.src_el
-                r = self._reaches_hw(a, l.src_el, upstream, depth + 1)
+                r = self._reaches_hw(a, l.src_el, upstream, depth + 1, seen)
                 if r:
                     return r
             if not upstream and l.src_el == el:
                 if l.memory in self.HW:
                     return l.sink_el
-                r = self._reaches_hw(a, l.sink_el, upstream, depth + 1)
+                r = self._reaches_hw(a, l.sink_el, upstream, depth + 1, seen)
                 if r:
                     return r
         return None

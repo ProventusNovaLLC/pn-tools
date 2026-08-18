@@ -110,7 +110,7 @@ def make_handler(broker: Broker, snapshot: Callable[[], dict], control: Callable
                     for event, data in pending:
                         self.wfile.write(f"event: {event}\ndata: {data}\n\n".encode())
                     self.wfile.flush()
-            except (BrokenPipeError, ConnectionResetError):
+            except OSError:
                 pass
             finally:
                 broker.unsubscribe((buf, cond))
