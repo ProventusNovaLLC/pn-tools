@@ -118,6 +118,22 @@ def _findings_payload(session_dict):
     return verdict.to_dict(a, fs)
 
 
+def _tick_payload(session_dict):
+    """One SSE frame per closed window: the newest value of every series column, so
+    the panel appends one row client-side instead of refetching the session."""
+    s = session_dict["series"]
+
+    def _last(cols):
+        return {c: (v[-1] if v else None) for c, v in cols.items()}
+
+    row = {"elements": {el: _last(cols) for el, cols in s["elements"].items()},
+           "links": {l: _last(cols) for l, cols in s["links"].items()},
+           "pipeline": _last(s["pipeline"]),
+           "system": _last(s["system"])}
+    return {"t": s["t"][-1], "rows": len(s["t"]),
+            "latency_ms_p95": row["pipeline"]["latency_ms_p95"], "row": row}
+
+
 # ---- capture (headless or live) --------------------------------------------------------
 def _capture(session, cmd, mode, args, caps=None) -> int:
     caps = caps or check()
@@ -134,6 +150,7 @@ def _capture(session, cmd, mode, args, caps=None) -> int:
     broker = srv.Broker() if live else None
     server = None
     last_rows = [0]
+    sent_events = [0]
 
     def on_line(line):
         with lock:
@@ -197,12 +214,17 @@ def _capture(session, cmd, mode, args, caps=None) -> int:
                     if tegra.available:
                         session.ingest_tegrastats(tegra.latest())
                     nrows = len(session.agg.rows)          # cheap row count; serialize only when we publish
+                if broker:
+                    with lock:
+                        new_events = session.events[sent_events[0]:]
+                        sent_events[0] = len(session.events)
+                    for ev in new_events:
+                        broker.publish("event", {"t": ev.t, "kind": ev.kind, "text": ev.text})
                 if broker and nrows > last_rows[0]:
                     last_rows[0] = nrows
                     with lock:
                         d = session.to_dict()
-                    broker.publish("tick", {"t": d["series"]["t"][-1], "rows": nrows,
-                                            "latency_ms_p95": d["series"]["pipeline"]["latency_ms_p95"][-1]})
+                    broker.publish("tick", _tick_payload(d))
                     broker.publish("findings", _findings_payload(d), sticky=True)
                 if duration and now - started >= duration:
                     break
@@ -219,12 +241,13 @@ def _capture(session, cmd, mode, args, caps=None) -> int:
             session.notes.append(f"lines read {launcher.lines_read}, dropped {launcher.dropped}, dot files dropped {launcher.dots_dropped}")
             d = session.to_dict()
 
+        a, fs = _verdict_of(d)
+        d["findings"] = verdict.to_dict(a, fs)["findings"]     # session file carries the verdict
         out = args.out or f"gst-profile-{session.id}.json"
         with open(out, "w") as fh:
             fh.write(json.dumps(d))
         print(f"gst-profile: session written to {out}", file=sys.stderr)
 
-        a, fs = _verdict_of(d)
         print(verdict.render_text(a, fs))
         exit_findings = _has_high_or_medium(fs)
 
@@ -326,6 +349,8 @@ def cmd_analyze(args) -> int:
         print(f"gst-profile: {args.path} is not a usable session ({e})", file=sys.stderr)
         return EXIT_USAGE
     if args.out:
+        a, fs = _verdict_of(d)
+        d["findings"] = verdict.to_dict(a, fs)["findings"]
         with open(args.out, "w") as fh:
             fh.write(json.dumps(d))
         print(f"gst-profile: session written to {args.out}", file=sys.stderr)

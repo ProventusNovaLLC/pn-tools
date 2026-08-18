@@ -7,6 +7,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable
 
+from .redact import redact_session
+
 
 class Broker:
     """Fan-out of frames to connected SSE clients. The capture thread calls publish(); each client
@@ -72,7 +74,10 @@ def make_handler(broker: Broker, snapshot: Callable[[], dict], control: Callable
             if self.path == "/" or self.path.startswith("/index"):
                 self._send(200, "text/html; charset=utf-8", page.encode())
             elif self.path.startswith("/session.json"):
-                self._send(200, "application/json", json.dumps(snapshot()).encode())
+                d = snapshot()
+                if "redact=1" in self.path:
+                    d = redact_session(d)
+                self._send(200, "application/json", json.dumps(d).encode())
             elif self.path.startswith("/events"):
                 self._stream()
             else:

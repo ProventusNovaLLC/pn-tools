@@ -38,6 +38,7 @@ def render_text(a, findings: List) -> str:
 def to_dict(a, findings: List) -> dict:
     return {
         "header": header(a),
+        "scope": R.SCOPE,
         "latency_ms_p95": a.latency_ms_p95,
         "frame_period_ms": a.frame_period_ms,
         "hot": [{"element": e, "proc_ms_p95": round(m, 3), "share_pct": round(s, 1)} for e, m, s in a.hot_share()[:8]],

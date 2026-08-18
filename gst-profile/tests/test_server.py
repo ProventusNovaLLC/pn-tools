@@ -71,6 +71,21 @@ class ServerTest(unittest.TestCase):
         r = c.getresponse(); self.assertEqual(r.status, 400); r.read()
         c.close()
 
+    def test_session_json_redacts_on_request(self):
+        snap = {"schema": "gst-profile/1",
+                "session": {"id": "s", "mode": "run",
+                            "launch": "rtspsrc location=rtsp://u:p@h/c ! fakesink", "notes": []},
+                "graph": {"elements": [], "links": []},
+                "events": [], "findings": [], "series": {"t": []}}
+        b, server = self.make(snap=snap)
+        c = http.client.HTTPConnection("127.0.0.1", server.port, timeout=5)
+        c.request("GET", "/session.json"); r = c.getresponse(); raw = r.read().decode()
+        c.request("GET", "/session.json?redact=1"); r = c.getresponse(); red = r.read().decode()
+        c.close()
+        self.assertIn("u:p", raw)
+        self.assertNotIn("u:p", red)
+        self.assertIn("[redacted]", red)
+
     def test_sticky_replacement_keeps_only_the_latest(self):
         b, server = self.make()
         b.publish("findings", [{"n": 1}], sticky=True)
