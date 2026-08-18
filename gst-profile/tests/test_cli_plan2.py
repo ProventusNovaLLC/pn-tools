@@ -49,7 +49,10 @@ class AnalyzeVerdictTest(unittest.TestCase):
         self.assertIn("__VERDICT__", html)
         self.assertIn("__SESSION__", html)
         self.assertIn("Zero-copy broken", html)
-        self.assertNotIn("http://", html.split("scoping")[0] if "scoping" in html else html)  # no external hosts in the doc head/body
+        # no external hosts: only a literal src=/href= or @import can fetch off-page (the panel's
+        # own SVG NS string "http://www.w3.org/2000/svg" is not a network reference)
+        self.assertNotRegex(html, r'(src|href)="https?://')
+        self.assertNotIn("@import", html)
 
     def test_report_escapes_script_in_pipeline_text(self):
         # element props containing </script> must not break out of the embedded verdict script
