@@ -196,10 +196,11 @@ def _capture(session, cmd, mode, args, caps=None) -> int:
                     session.ingest_cpu(ps.sample(now))
                     if tegra.available:
                         session.ingest_tegrastats(tegra.latest())
-                    d = session.to_dict()
-                    nrows = len(d["series"]["t"])
+                    nrows = len(session.agg.rows)          # cheap row count; serialize only when we publish
                 if broker and nrows > last_rows[0]:
                     last_rows[0] = nrows
+                    with lock:
+                        d = session.to_dict()
                     broker.publish("tick", {"t": d["series"]["t"][-1], "rows": nrows,
                                             "latency_ms_p95": d["series"]["pipeline"]["latency_ms_p95"][-1]})
                     broker.publish("findings", _findings_payload(d), sticky=True)
