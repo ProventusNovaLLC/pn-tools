@@ -66,7 +66,7 @@ class CliTest(unittest.TestCase):
     def test_wrap_real_app_gets_topology_and_caps_from_the_log(self):
         out = os.path.join(tempfile.mkdtemp(), "wrap.json")
         # gst-launch stands in for "your binary": wrap mode must not depend on dot dumps for topology or caps
-        code = main(["wrap", "--duration", "3s", "--out", out, "--",
+        code = main(["wrap", "--duration", "3s", "--out", out, "--no-ui", "--",
                      "gst-launch-1.0", "-q", "videotestsrc", "num-buffers=45", "!", "video/x-raw,width=320,height=240,framerate=30/1",
                      "!", "videoconvert", "!", "video/x-raw,format=NV12", "!", "fakesink", "sync=false"])
         self.assertEqual(code, 0)

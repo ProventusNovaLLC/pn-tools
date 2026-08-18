@@ -1,4 +1,6 @@
-"""gst-profile command line: check | run | wrap | analyze (Plan 1: headless; live UI and report arrive in later plans)."""
+"""gst-profile command line. Plan 2: the rule engine's verdict is the default output of
+run/wrap/analyze; run/wrap serve a live view over SSE unless --no-ui; analyze --serve browses a
+recorded session; report writes a self-contained HTML; exit code 1 signals a high/medium finding."""
 import argparse
 import gzip
 import json
@@ -17,8 +19,11 @@ from .launcher import Launcher
 from .procstat import ProcStat
 from .tegrastats import TegrastatsSource
 from .launchparse import parse_launch, LaunchParseError
+from . import analysis, rules, verdict, server as srv
 
 EXIT_CLEAN, EXIT_FINDINGS, EXIT_CHILD_FAILED, EXIT_USAGE = 0, 1, 2, 3
+
+_PAGE = os.path.join(os.path.dirname(__file__), "panel", "live.html")
 
 
 class UsageError(Exception):
@@ -26,9 +31,6 @@ class UsageError(Exception):
 
 
 class _Parser(argparse.ArgumentParser):
-    """argparse that reports usage errors through main()'s exit-code contract (3) instead of SystemExit(2).
-    --help/--version still exit 0 the argparse way."""
-
     def error(self, message):
         self.print_usage(sys.stderr)
         print(f"{self.prog}: error: {message}", file=sys.stderr)
@@ -39,9 +41,9 @@ def _parse_duration(s: Optional[str]) -> Optional[float]:
     if not s:
         return None
     s = s.strip().lower()
-    mult = 1.0
     if s.endswith("ms"):
         return float(s[:-2]) / 1000.0
+    mult = 1.0
     if s.endswith("s"):
         s = s[:-1]
     elif s.endswith("m"):
@@ -49,18 +51,27 @@ def _parse_duration(s: Optional[str]) -> Optional[float]:
     return float(s) * mult
 
 
+def _page() -> str:
+    try:
+        with open(_PAGE, encoding="utf-8") as fh:
+            return fh.read()
+    except OSError:
+        return "<html><body>gst-profile live view</body></html>"
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = _Parser(prog="gst-profile", description="Live GStreamer pipeline profiler: where does the time go?")
     p.add_argument("--version", action="version", version=f"gst-profile {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True, parser_class=_Parser)
-
     sub.add_parser("check", help="preflight: what can this machine measure?")
 
     def common(sp):
         sp.add_argument("--duration", help="stop after e.g. 30s / 2m (default: until Ctrl-C or the pipeline ends)")
         sp.add_argument("--out", help="write session JSON here (default: ./gst-profile-<id>.json)")
-        sp.add_argument("--no-ui", action="store_true", help="headless capture (Plan 1: always headless)")
-        sp.add_argument("--print", dest="print_summary", action="store_true", help="print the model summary at the end")
+        sp.add_argument("--no-ui", action="store_true", help="headless: capture and print the verdict, no live server")
+        sp.add_argument("--port", type=int, default=8790, help="live view port (default 8790; 0 = pick a free port)")
+        sp.add_argument("--host", default="0.0.0.0", help="live view bind address (default all interfaces; use 127.0.0.1 to lock down)")
+        sp.add_argument("--hold", default="0", help="seconds to keep the live view up after capture ends (default 0 = exit when done; e.g. 300 to keep viewing)")
         sp.add_argument("--lite", action="store_true", help="latency tracer only (no stats): minimal overhead, no bytes/s")
         sp.add_argument("--tracers", help="override GST_TRACERS verbatim")
         sp.add_argument("--label", default="", help="session label (v2 A/B)")
@@ -71,66 +82,50 @@ def build_parser() -> argparse.ArgumentParser:
     w = sub.add_parser("wrap", help="run your own binary under the profiler: gst-profile wrap [flags] -- ./app args")
     w.add_argument("command", nargs=argparse.REMAINDER, help="-- your command and its arguments")
     common(w)
-    a = sub.add_parser("analyze", help="build a session from an existing GST_DEBUG log (or re-print a session JSON)")
+    a = sub.add_parser("analyze", help="build a session from an existing GST_DEBUG log or a session JSON, print the verdict")
     a.add_argument("path")
     a.add_argument("--dot", action="append", default=[], help="dot dump(s) to merge for topology/caps")
     a.add_argument("--out")
-    a.add_argument("--print", dest="print_summary", action="store_true")
+    a.add_argument("--serve", action="store_true", help="serve the recorded session for browsing")
+    a.add_argument("--port", type=int, default=8790)
+    a.add_argument("--host", default="0.0.0.0")
+    rp = sub.add_parser("report", help="write a self-contained HTML report from a session JSON")
+    rp.add_argument("path")
+    rp.add_argument("-o", "--out", required=True, help="output .html path")
     return p
 
 
-# ---- summary (pre-verdict; the rule engine replaces this in Plan 2) -----------------
-def summarize(session: Session) -> str:
-    d = session.to_dict()
-    g, s = d["graph"], d["series"]
-    lines = [f"session {d['session']['id']}  mode={d['session']['mode']}  duration={d['session']['duration_s']}s  "
-             f"records={d['session']['parse']['records']}  unparsed={d['session']['parse']['unparsed']}",
-             f"target: gstreamer {d['target']['gstreamer'] or '?'}  platform {d['target']['platform']}  "
-             f"sources {', '.join(d['target']['sources_present'])}"]
-    lines.append("pipeline:")
-    for l in g["links"]:
-        lines.append(f"  {l['src']:>28} -> {l['sink']:<28} [{l['memory']}{(' ' + l['format']) if l['format'] else ''}]")
-    rows = len(s["t"])
-    if rows:
-        def last_valid(vals):
-            v = [x for x in vals if x is not None]
-            return v[-1] if v else None
-        def p95_of(vals):
-            v = sorted(x for x in vals if x is not None)
-            return v[int(0.95 * (len(v) - 1))] if v else None
-        lat = p95_of(s["pipeline"]["latency_ms_p95"])
-        lines.append(f"pipeline latency p95: {lat:.2f} ms" if lat is not None else "pipeline latency: n/a (no source->sink latency records)")
-        hot = []
-        for eid, cols in s["elements"].items():
-            p = p95_of(cols["proc_ms_p95"])
-            c = last_valid(cols["cpu_pct"])
-            if p is not None or c is not None:
-                hot.append((p or 0.0, eid, p, c))
-        hot.sort(reverse=True)
-        total = sum(h[0] for h in hot) or 1.0
-        lines.append("where the time goes (proc p95, share, cpu%):")
-        for _, eid, p, c in hot[:8]:
-            lines.append(f"  {eid:<24} {('%.3f ms' % p) if p is not None else '   n/a  ':>10}  {100.0 * (p or 0) / total:5.1f}%  {('%.0f%%' % c) if c is not None else ''}")
-        for lid, cols in s["links"].items():
-            if any(cols["stalled"]):
-                lines.append(f"  STALLED at some point: {lid}")
-    else:
-        lines.append("no windows aggregated (pipeline produced no tracer records)")
-    return "\n".join(lines)
+# ---- verdict helpers -------------------------------------------------------------------
+def _verdict_of(session_dict):
+    rules.VERIFIED_RULES  # (populated by Plan 4; empty here means every diagnostic finding is info)
+    a = analysis.build(session_dict)
+    fs = rules.run_rules(a)
+    return a, fs
 
 
-# ---- commands ------------------------------------------------------------------------
-def cmd_check(_args) -> int:
-    print(render(check()))
-    return EXIT_CLEAN
+def _print_verdict(session_dict) -> int:
+    a, fs = _verdict_of(session_dict)
+    print(verdict.render_text(a, fs))
+    return EXIT_FINDINGS if any(f.severity in ("high", "medium") for f in fs) else EXIT_CLEAN
 
 
-def _capture(session: Session, cmd: List[str], mode: str, args, caps=None) -> int:
+def _findings_payload(session_dict):
+    a, fs = _verdict_of(session_dict)
+    return verdict.to_dict(a, fs)
+
+
+# ---- capture (headless or live) --------------------------------------------------------
+def _capture(session, cmd, mode, args, caps=None) -> int:
     caps = caps or check()
     session.target = caps.to_target()
     session.graph.platform = caps.platform
     duration = _parse_duration(args.duration)
+    hold = _parse_duration(args.hold) if getattr(args, "hold", None) else 0.0
+    live = not args.no_ui
     lock = threading.Lock()
+    broker = srv.Broker() if live else None
+    server = None
+    last_rows = [0]
 
     def on_line(line):
         with lock:
@@ -138,11 +133,13 @@ def _capture(session: Session, cmd: List[str], mode: str, args, caps=None) -> in
 
     def on_dot(text):
         with lock:
-            session.ingest_dot(text)
+            changed = session.ingest_dot(text)
+        if changed and broker:
+            with lock:
+                broker.publish("graph", session.graph.to_dict(), sticky=True)
 
     launcher = Launcher(cmd, on_line, on_dot, mode=mode, element_latency=caps.element_latency, lite=args.lite, tracers=args.tracers)
     tegra = TegrastatsSource()
-    t_start = time.time()                           # wall clock: session.duration_s comes from this bracket
     try:
         launcher.start()
     except OSError as e:
@@ -151,20 +148,32 @@ def _capture(session: Session, cmd: List[str], mode: str, args, caps=None) -> in
         return EXIT_USAGE
     tegra.start()
     ps = ProcStat(launcher.proc.pid)
-    started = time.monotonic()                      # monotonic: immune to wall-clock jumps (boot/NTP on Jetson)
-    print(f"gst-profile: capturing ({mode})  pid={launcher.proc.pid}  Ctrl-C to stop"
-          + (f"  duration={duration}s" if duration else ""), file=sys.stderr)
     stopping = {"flag": False}
 
+    if live:
+        server = srv.LiveServer(broker, lambda: _snapshot(session, lock), lambda req: _control(req, session, lock, stopping),
+                                _page(), host=args.host, port=args.port)
+        server.start()
+        broker.publish("status", {"state": "capturing", "port": server.port}, sticky=True)
+        url_host = "127.0.0.1" if args.host in ("0.0.0.0", "::") else args.host
+        print(f"gst-profile: live view  http://{url_host}:{server.port}   (Ctrl-C to stop)", file=sys.stderr)
+    print(f"gst-profile: capturing ({mode})  pid={launcher.proc.pid}" + (f"  duration={duration}s" if duration else ""), file=sys.stderr)
+
+    started = time.monotonic()
+    handlers = []
     def on_stop_signal(_s, _f):
         stopping["flag"] = True
-    old_sigint = signal.signal(signal.SIGINT, on_stop_signal)
-    old_sigterm = signal.signal(signal.SIGTERM, on_stop_signal)
-    old_sighup = signal.signal(signal.SIGHUP, on_stop_signal) if hasattr(signal, "SIGHUP") else None
+    is_main = threading.current_thread() is threading.main_thread()
+    if is_main:                                        # signal handlers only work on the main thread
+        for signame in ("SIGINT", "SIGTERM", "SIGHUP"):
+            sig = getattr(signal, signame, None)
+            if sig is not None:
+                try:
+                    handlers.append((sig, signal.signal(sig, on_stop_signal)))
+                except (ValueError, OSError):
+                    pass
+    child_self_exited = False
     try:
-        # Windows advance only from record timestamps (the tracer's clock); this loop samples the system.
-        # A silent pipeline therefore produces no new windows in this plan — the live server (Plan 2)
-        # advances the axis during silence using CLOCK_MONOTONIC, which is the tracer's clock domain.
         while launcher.running() and not stopping["flag"]:
             time.sleep(0.25)
             now = time.monotonic()
@@ -172,34 +181,73 @@ def _capture(session: Session, cmd: List[str], mode: str, args, caps=None) -> in
                 session.ingest_cpu(ps.sample(now))
                 if tegra.available:
                     session.ingest_tegrastats(tegra.latest())
+                d = session.to_dict()
+                nrows = len(d["series"]["t"])
+            if broker and nrows > last_rows[0]:
+                last_rows[0] = nrows
+                broker.publish("tick", {"t": d["series"]["t"][-1], "rows": nrows,
+                                        "latency_ms_p95": d["series"]["pipeline"]["latency_ms_p95"][-1]})
+                broker.publish("findings", _findings_payload(d), sticky=True)
             if duration and now - started >= duration:
                 break
-    finally:
-        # SIGINT/TERM/HUP handlers stay installed through stop()'s grace period (restored only at the very
-        # end, after the session is written) so a second Ctrl-C during teardown doesn't raise KeyboardInterrupt
-        # here and skip the write — it just re-sets the (already-set) stopping flag.
         child_self_exited = not launcher.running() and not stopping["flag"]
-        code = launcher.stop()                     # never orphan the child, whatever happened above
+        code = launcher.stop()
+    finally:
         tegra.stop()
         launcher.cleanup()
-    t_end = time.time()
     with lock:
         session.flush_pending()
         session.add_event("child-exit", f"exit code {code}")
         session.notes.append(f"lines read {launcher.lines_read}, dropped {launcher.dropped}, dot files dropped {launcher.dots_dropped}")
-        session.duration_s = round(t_end - t_start, 3)
+        d = session.to_dict()
+
     out = args.out or f"gst-profile-{session.id}.json"
     with open(out, "w") as fh:
-        fh.write(session.to_json())
+        fh.write(json.dumps(d))
     print(f"gst-profile: session written to {out}", file=sys.stderr)
-    if args.print_summary:
-        print(summarize(session))
-    signal.signal(signal.SIGINT, old_sigint)
-    signal.signal(signal.SIGTERM, old_sigterm)
-    if old_sighup is not None:
-        signal.signal(signal.SIGHUP, old_sighup)
+
+    a, fs = _verdict_of(d)
+    print(verdict.render_text(a, fs))
+    exit_findings = any(f.severity in ("high", "medium") for f in fs)
+
+    if server:
+        broker.publish("findings", verdict.to_dict(a, fs), sticky=True)
+        broker.publish("status", {"state": "done"}, sticky=True)
+        if hold and not stopping["flag"]:
+            url_host = "127.0.0.1" if args.host in ("0.0.0.0", "::") else args.host
+            print(f"gst-profile: capture done — live view held at http://{url_host}:{server.port} for {int(hold)}s (Ctrl-C to exit now)", file=sys.stderr)
+            deadline = time.monotonic() + hold
+            try:
+                while time.monotonic() < deadline and not stopping["flag"]:
+                    time.sleep(0.2)
+            except KeyboardInterrupt:
+                pass
+        server.stop()
+    for sig, old in handlers:
+        signal.signal(sig, old)
+
     if child_self_exited and code not in (0, None):
         return EXIT_CHILD_FAILED
+    return EXIT_FINDINGS if exit_findings else EXIT_CLEAN
+
+
+def _snapshot(session, lock):
+    with lock:
+        return session.to_dict()
+
+
+def _control(req, session, lock, stopping):
+    if req.get("action") == "stop":
+        stopping["flag"] = True
+    elif req.get("action") == "mark":
+        with lock:
+            session.add_event("mark", str(req.get("text", "mark")))
+    return {"ok": True}
+
+
+# ---- commands --------------------------------------------------------------------------
+def cmd_check(_args) -> int:
+    print(render(check()))
     return EXIT_CLEAN
 
 
@@ -209,12 +257,11 @@ def cmd_run(args) -> int:
         print("gst-profile: gst-launch-1.0 not found; `run` needs it (use `wrap` for your own binary)", file=sys.stderr)
         return EXIT_USAGE
     try:
-        static_graph, notes = parse_launch(args.launch, platform=caps.platform)
+        parse_launch(args.launch, platform=caps.platform)      # validate syntax; graph comes from runtime dot dumps
     except LaunchParseError as e:
         print(f"gst-profile: cannot parse pipeline: {e}", file=sys.stderr)
         return EXIT_USAGE
     session = Session(mode="run", launch=args.launch, label=args.label)
-    session.notes.extend(notes)
     cmd = [caps.gst_launch, "-q"] + shlex.split(args.launch)
     return _capture(session, cmd, "run", args, caps=caps)
 
@@ -230,31 +277,65 @@ def cmd_wrap(args) -> int:
     return _capture(session, cmd, "wrap", args)
 
 
+def _load_session_dict(path, dots=()):
+    opener = gzip.open if path.endswith(".gz") else open
+    with opener(path, "rb") as fh:
+        head = fh.read(64)
+    if head.lstrip().startswith(b"{"):
+        with opener(path, "rt") as fh:
+            return json.load(fh)
+    session = Session(mode="analyze")
+    with opener(path, "rt", errors="replace") as fh:
+        for line in fh:
+            session.ingest_line(line)
+    for dp in dots:
+        with open(dp, encoding="utf-8", errors="replace") as fh:
+            session.ingest_dot(fh.read())
+    session.flush_pending()
+    return session.to_dict()
+
+
 def cmd_analyze(args) -> int:
     if not os.path.exists(args.path):
         print(f"gst-profile: {args.path} not found", file=sys.stderr)
         return EXIT_USAGE
-    opener = gzip.open if args.path.endswith(".gz") else open
-    with opener(args.path, "rb") as fh:
-        head = fh.read(64)
-    if head.lstrip().startswith(b"{"):
-        with opener(args.path, "rt") as fh:
-            session = Session.from_dict(json.load(fh))
-    else:
-        session = Session(mode="analyze")
-        with opener(args.path, "rt", errors="replace") as fh:
-            for line in fh:
-                session.ingest_line(line)
-        for dp in args.dot:
-            with open(dp, encoding="utf-8", errors="replace") as fh:
-                session.ingest_dot(fh.read())
-        session.flush_pending()
+    d = _load_session_dict(args.path, args.dot)
     if args.out:
         with open(args.out, "w") as fh:
-            fh.write(session.to_json())
+            fh.write(json.dumps(d))
         print(f"gst-profile: session written to {args.out}", file=sys.stderr)
-    if args.print_summary or not args.out:
-        print(summarize(session))
+    code = _print_verdict(d)
+    if args.serve:
+        broker = srv.Broker()
+        broker.publish("graph", d["graph"], sticky=True)
+        broker.publish("findings", _findings_payload(d), sticky=True)
+        broker.publish("status", {"state": "done"}, sticky=True)
+        server = srv.LiveServer(broker, lambda: d, lambda req: {"ok": True}, _page(), host=args.host, port=args.port)
+        server.start()
+        url_host = "127.0.0.1" if args.host in ("0.0.0.0", "::") else args.host
+        print(f"gst-profile: serving {args.path} at http://{url_host}:{server.port} (Ctrl-C to exit)", file=sys.stderr)
+        try:
+            while True:
+                time.sleep(0.3)
+        except KeyboardInterrupt:
+            pass
+        server.stop()
+    return code
+
+
+def cmd_report(args) -> int:
+    if not os.path.exists(args.path):
+        print(f"gst-profile: {args.path} not found", file=sys.stderr)
+        return EXIT_USAGE
+    d = _load_session_dict(args.path)
+    payload = _findings_payload(d)
+    meta = f"{d['session'].get('mode','?')} · {d['session'].get('duration_s',0)}s · {len(d['series']['t'])} windows"
+    page = _page()
+    inject = ("<script>window.__VERDICT__=" + json.dumps(payload) + ";window.__META__=" + json.dumps(meta) + ";</script>")
+    html = page.replace("<script>", inject + "\n<script>", 1)
+    with open(args.out, "w", encoding="utf-8") as fh:
+        fh.write(html)
+    print(f"gst-profile: report written to {args.out}", file=sys.stderr)
     return EXIT_CLEAN
 
 
@@ -263,7 +344,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         args = build_parser().parse_args(argv)
     except UsageError:
         return EXIT_USAGE
-    return {"check": cmd_check, "run": cmd_run, "wrap": cmd_wrap, "analyze": cmd_analyze}[args.cmd](args)
+    return {"check": cmd_check, "run": cmd_run, "wrap": cmd_wrap,
+            "analyze": cmd_analyze, "report": cmd_report}[args.cmd](args)
 
 
 if __name__ == "__main__":
