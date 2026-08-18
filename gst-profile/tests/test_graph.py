@@ -10,7 +10,8 @@ def rec(kind, **fields):
 class GraphTest(unittest.TestCase):
     def test_vendor(self):
         self.assertEqual(vendor_of("nvvidconv"), "nvidia")
-        self.assertEqual(vendor_of("omxh264enc"), "nvidia")
+        self.assertEqual(vendor_of("omxh264enc", "jetson"), "nvidia")     # gst-omx on Jetson (JP4) is NVIDIA's
+        self.assertEqual(vendor_of("omxh264enc", "generic"), "generic")  # gst-omx also exists on RPi/others
         self.assertEqual(vendor_of("videoconvert"), "generic")
         self.assertEqual(vendor_of("v4l2h264enc", "mediatek"), "mediatek")
         self.assertEqual(vendor_of("v4l2h264enc", "jetson"), "generic")

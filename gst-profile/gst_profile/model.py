@@ -64,6 +64,12 @@ class Session:
             self.ingest_record(item)
 
     def ingest_record(self, rec: Record):
+        try:
+            self._ingest_record(rec)
+        except (KeyError, ValueError, IndexError):
+            self.parse_stats.errors += 1
+
+    def _ingest_record(self, rec: Record):
         if rec.kind in STATS_KINDS:
             self.graph.ingest_record(rec)
         link_id = self.graph.link_for_stats_buffer(rec) if rec.kind == "buffer" else None
@@ -136,7 +142,7 @@ class Session:
     def to_dict(self) -> dict:
         series = self.series_dict()
         rows_t = series.get("t", [])
-        if rows_t and not getattr(self, "_series_dict", None):
+        if rows_t and not self.duration_s:               # fallback only: a real capture already set this from wall clock
             self.duration_s = round(rows_t[-1] + self.agg.window_ns / 1e9, 3)
         return {
             "schema": SCHEMA,

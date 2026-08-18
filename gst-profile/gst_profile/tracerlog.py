@@ -44,6 +44,7 @@ class ParseStats:
     caps_events: int = 0
     format_decls: int = 0
     unparsed: int = 0
+    errors: int = 0
 
 
 def parse_wall_ns(ts: str) -> int:

@@ -4,6 +4,7 @@ import select
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -107,7 +108,10 @@ class Launcher:
                 except Exception:               # a bad line must never kill the capture
                     self.dropped += 1
         if buf:
-            self.on_line(buf.decode("utf-8", "replace"))
+            try:
+                self.on_line(buf.decode("utf-8", "replace"))
+            except Exception:               # a bad final partial line must never kill the capture
+                self.dropped += 1
         try:
             os.close(self._fd)
         except OSError:
@@ -124,9 +128,9 @@ class Launcher:
                     continue
                 time.sleep(0.05)              # let the writer finish
                 try:
-                    with open(os.path.join(self.dot_dir, n)) as fh:
+                    with open(os.path.join(self.dot_dir, n), encoding="utf-8", errors="replace") as fh:
                         text = fh.read()
-                except OSError:
+                except Exception:             # OSError (unreadable) or a decode error must not kill this thread
                     self._dot_attempts[n] = self._dot_attempts.get(n, 0) + 1
                     if self._dot_attempts[n] >= self.DOT_MAX_ATTEMPTS:      # give up, but say so
                         self._seen_dots.add(n)
@@ -155,8 +159,14 @@ class Launcher:
 
     def stop(self, grace: float = 5.0) -> Optional[int]:
         """SIGINT the child's process group (gst-launch does a clean EOS on SIGINT), then TERM, then KILL."""
+        escalate_msg = {
+            signal.SIGTERM: "gst-profile: child ignored SIGINT, sending SIGTERM",
+            signal.SIGKILL: "gst-profile: child ignored SIGTERM, sending SIGKILL",
+        }
         if self.proc and self.proc.poll() is None:
             for sig, wait_s in ((signal.SIGINT, grace), (signal.SIGTERM, 3.0), (signal.SIGKILL, 2.0)):
+                if sig in escalate_msg:
+                    print(escalate_msg[sig], file=sys.stderr)
                 try:
                     os.killpg(self.proc.pid, sig)
                 except ProcessLookupError:
@@ -170,6 +180,10 @@ class Launcher:
             self.exit_code = self.proc.returncode if self.proc else None
         if self.proc and self.exit_code is None:            # child died between poll() and killpg(): reap it
             self.exit_code = self.proc.poll()
+        # child is dead: let the reader drain to FIFO EOF on its own (it exits within ~0.2s of that) before
+        # we force it to stop, so a fast pipeline's tail isn't lost to a mid-buffer _stop.
+        if self._reader:
+            self._reader.join(timeout=3)
         self._stop.set()
         if self._reader:
             self._reader.join(timeout=2)

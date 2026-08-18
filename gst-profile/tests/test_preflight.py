@@ -1,5 +1,5 @@
 import unittest
-from gst_profile.preflight import check, render
+from gst_profile.preflight import check, render, parse_l4t
 
 
 def fake_runner(version):
@@ -34,6 +34,12 @@ class PreflightTest(unittest.TestCase):
         c = check(run=lambda cmd: None, which=lambda name: None)
         self.assertIsNone(c.gst_launch)
         self.assertTrue(any("gst-launch-1.0 not found" in p for p in c.problems))
+
+    def test_l4t_regex_crosses_the_comma(self):
+        # "R(\d+)[^,]*REVISION:" used to fail here because [^,]* can't cross the comma before REVISION:
+        self.assertEqual(parse_l4t("# R35 (release), REVISION: 4.1, GCID: 12345678, BOARD: t186ref\n"), "35.4.1")
+        self.assertEqual(parse_l4t(""), "")
+        self.assertEqual(parse_l4t("not an l4t release string"), "")
 
 
 if __name__ == "__main__":

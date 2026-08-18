@@ -17,7 +17,11 @@ gst-profile analyze trace.log.gz --dot pipeline.dot     # offline, from a GST_DE
 
 Later plans add the rule engine + verdict, the live panel (SSE), the static
 report, the Skill and the bench-verified rules. See the design doc in the
-private production hub (`03-gstreamer-cookbook/2026-08-17-gst-profiler-design.md`).
+private production hub.
+
+`gst-profile` sets (and overrides) `GST_DEBUG`, `GST_DEBUG_FILE`, and
+`GST_DEBUG_DUMP_DOT_DIR` in the profiled child's environment — anything your
+own pipeline or shell already set for these is not preserved during capture.
 
 ## Layout
 
@@ -34,5 +38,10 @@ private production hub (`03-gstreamer-cookbook/2026-08-17-gst-profiler-design.md
 `schema: gst-profile/1` — graph (elements, links with memory domain), series
 (columnar, 250 ms windows: per-element proc p50/p95 + cpu, per-link fps/bytes/
 stalled, pipeline latency, system), events, findings (empty until Plan 2).
+
+Session JSON and shareable reports may contain pipeline details from your own
+pipeline — `location=` properties, URIs, credentials embedded in a pipeline
+string or a launch/wrap command — verbatim. Redaction arrives in a later
+version; don't share a session file you haven't reviewed.
 
 MIT — part of [pn-tools](https://github.com/ProventusNovaLLC/pn-tools).

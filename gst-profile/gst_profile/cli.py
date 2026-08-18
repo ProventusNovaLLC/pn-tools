@@ -142,24 +142,32 @@ def _capture(session: Session, cmd: List[str], mode: str, args, caps=None) -> in
 
     launcher = Launcher(cmd, on_line, on_dot, mode=mode, element_latency=caps.element_latency, lite=args.lite, tracers=args.tracers)
     tegra = TegrastatsSource()
-    launcher.start()
+    t_start = time.time()                           # wall clock: session.duration_s comes from this bracket
+    try:
+        launcher.start()
+    except OSError as e:
+        launcher.cleanup()
+        print(f"gst-profile: cannot start {cmd[0]}: {e}", file=sys.stderr)
+        return EXIT_USAGE
     tegra.start()
     ps = ProcStat(launcher.proc.pid)
-    started = time.time()
+    started = time.monotonic()                      # monotonic: immune to wall-clock jumps (boot/NTP on Jetson)
     print(f"gst-profile: capturing ({mode})  pid={launcher.proc.pid}  Ctrl-C to stop"
           + (f"  duration={duration}s" if duration else ""), file=sys.stderr)
     stopping = {"flag": False}
 
-    def on_sigint(_s, _f):
+    def on_stop_signal(_s, _f):
         stopping["flag"] = True
-    old = signal.signal(signal.SIGINT, on_sigint)
+    old_sigint = signal.signal(signal.SIGINT, on_stop_signal)
+    old_sigterm = signal.signal(signal.SIGTERM, on_stop_signal)
+    old_sighup = signal.signal(signal.SIGHUP, on_stop_signal) if hasattr(signal, "SIGHUP") else None
     try:
         # Windows advance only from record timestamps (the tracer's clock); this loop samples the system.
         # A silent pipeline therefore produces no new windows in this plan — the live server (Plan 2)
         # advances the axis during silence using CLOCK_MONOTONIC, which is the tracer's clock domain.
         while launcher.running() and not stopping["flag"]:
             time.sleep(0.25)
-            now = time.time()
+            now = time.monotonic()
             with lock:
                 session.ingest_cpu(ps.sample(now))
                 if tegra.available:
@@ -167,21 +175,30 @@ def _capture(session: Session, cmd: List[str], mode: str, args, caps=None) -> in
             if duration and now - started >= duration:
                 break
     finally:
-        signal.signal(signal.SIGINT, old)
+        # SIGINT/TERM/HUP handlers stay installed through stop()'s grace period (restored only at the very
+        # end, after the session is written) so a second Ctrl-C during teardown doesn't raise KeyboardInterrupt
+        # here and skip the write — it just re-sets the (already-set) stopping flag.
+        child_self_exited = not launcher.running() and not stopping["flag"]
         code = launcher.stop()                     # never orphan the child, whatever happened above
         tegra.stop()
         launcher.cleanup()
+    t_end = time.time()
     with lock:
         session.flush_pending()
         session.add_event("child-exit", f"exit code {code}")
         session.notes.append(f"lines read {launcher.lines_read}, dropped {launcher.dropped}, dot files dropped {launcher.dots_dropped}")
+        session.duration_s = round(t_end - t_start, 3)
     out = args.out or f"gst-profile-{session.id}.json"
     with open(out, "w") as fh:
         fh.write(session.to_json())
     print(f"gst-profile: session written to {out}", file=sys.stderr)
     if args.print_summary:
         print(summarize(session))
-    if code not in (0, None) and not stopping["flag"] and not duration:
+    signal.signal(signal.SIGINT, old_sigint)
+    signal.signal(signal.SIGTERM, old_sigterm)
+    if old_sighup is not None:
+        signal.signal(signal.SIGHUP, old_sighup)
+    if child_self_exited and code not in (0, None):
         return EXIT_CHILD_FAILED
     return EXIT_CLEAN
 
@@ -198,12 +215,6 @@ def cmd_run(args) -> int:
         return EXIT_USAGE
     session = Session(mode="run", launch=args.launch, label=args.label)
     session.notes.extend(notes)
-    # pre-seed the graph from the launch string so static facts (props, caps filters) exist before first buffer
-    for el in static_graph.elements.values():
-        e = session.graph.add_element(el.id, factory=el.factory)
-        e.props.update(el.props)
-    for l in static_graph.links.values():
-        session.graph.add_link(l.src, l.sink, caps=l.caps)
     cmd = [caps.gst_launch, "-q"] + shlex.split(args.launch)
     return _capture(session, cmd, "run", args, caps=caps)
 
@@ -235,7 +246,7 @@ def cmd_analyze(args) -> int:
             for line in fh:
                 session.ingest_line(line)
         for dp in args.dot:
-            with open(dp) as fh:
+            with open(dp, encoding="utf-8", errors="replace") as fh:
                 session.ingest_dot(fh.read())
         session.flush_pending()
     if args.out:

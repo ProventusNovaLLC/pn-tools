@@ -39,6 +39,20 @@ class ModelTest(unittest.TestCase):
         self.assertEqual(s2.series_dict()["t"], d["series"]["t"])
         self.assertEqual(s2.mode, "analyze")
 
+    def test_ingest_line_never_raises_on_malformed_record(self):
+        s = Session(mode="analyze")
+        bad = ('0:00:00.100000000 1 0x1 TRACE             GST_TRACER :0:: new-element, thread-id=(guint64)1, '
+               'ts=(guint64)1, ix=(uint)0, parent-ix=(uint)4294967295, type=(string)GstX, is-bin=(boolean)0;\n')
+        good = ('0:00:00.200000000 1 0x1 TRACE             GST_TRACER :0:: new-element, thread-id=(guint64)1, '
+                'ts=(guint64)2, ix=(uint)1, parent-ix=(uint)4294967295, name=(string)pipeline0, '
+                'type=(string)GstPipeline, is-bin=(boolean)1;\n')
+        s.ingest_line(bad)                          # missing name= -> would KeyError without the fix
+        s.ingest_line(good)
+        s.flush_pending()
+        d = s.to_dict()                              # must succeed, not raise
+        self.assertEqual(d["session"]["parse"]["errors"], 1)
+        self.assertIn("pipeline0", [e["id"] for e in d["graph"]["elements"]])
+
     def test_cpu_attributed_to_thread_segment(self):
         s = Session(mode="run")
         for a, b in (("src0:src", "conv0:sink"), ("conv0:src", "queue0:sink"), ("queue0:src", "enc0:sink"), ("enc0:src", "sink0:sink")):

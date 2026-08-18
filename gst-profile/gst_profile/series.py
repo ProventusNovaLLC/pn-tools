@@ -122,10 +122,11 @@ class Aggregator:
             row.elements.setdefault(el, ElementRow()).cpu_pct = cpu
         for el, q in self.queue_levels.items():
             row.elements.setdefault(el, ElementRow()).queue_level = q
+        any_flow = any(self._link_n.get(l, 0) for l in self._seen_links)
         for lid in self._seen_links:
             n = self._link_n.get(lid, 0)
             row.links[lid] = LinkRow(fps=n / secs, bytes_s=self._link_bytes.get(lid, 0) / secs,
-                                     stalled=(n == 0 and lid in self._ever_flowed))
+                                     stalled=(n == 0 and lid in self._ever_flowed and any_flow))
         pl = sorted(self._pipe_lat)
         row.latency_ms_p50, row.latency_ms_p95 = _pct(pl, 0.5), _pct(pl, 0.95)
         row.reported_latency_ms = max(self._reported.values()) if self._reported else None

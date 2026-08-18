@@ -21,6 +21,12 @@ class TegrastatsTest(unittest.TestCase):
     def test_garbage(self):
         self.assertEqual(parse_line("not a tegrastats line"), {})
 
+    def test_dual_gpc_gr3d_freq(self):
+        # AGX Orin: two GPCs, GR3D_FREQ carries a comma-separated frequency list inside the brackets.
+        d = parse_line("RAM 2831/7620MB (lfb 4x2MB) SWAP 0/3810MB (cached 0MB) CPU [12%@1420,8%@1420] "
+                        "EMC_FREQ 3%@2133 GR3D_FREQ 43%@[1300,1300] VIC_FREQ 15%@115 NVENC off")
+        self.assertEqual(d["gr3d_pct"], 43.0)
+
 
 if __name__ == "__main__":
     unittest.main()

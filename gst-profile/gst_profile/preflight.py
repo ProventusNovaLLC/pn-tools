@@ -73,6 +73,14 @@ def read_file(path: str) -> str:
         return ""
 
 
+def parse_l4t(text: str) -> str:
+    """Extract 'MAJOR.REVISION' (e.g. '35.4.1') from /etc/nv_tegra_release content
+    (e.g. '# R35 (release), REVISION: 4.1, GCID: ...'). '.*?' crosses the comma between
+    the release marker and REVISION: — a plain [^,]* can't."""
+    mm = re.search(r"R(\d+).*?REVISION:\s*([\d.]+)", text)
+    return f"{mm.group(1)}.{mm.group(2)}" if mm else ""
+
+
 def check(run: Runner = _run, which=shutil.which) -> Capabilities:
     c = Capabilities(python=".".join(map(str, sys.version_info[:3])))
     if sys.version_info < (3, 8):
@@ -98,8 +106,7 @@ def check(run: Runner = _run, which=shutil.which) -> Capabilities:
     l4t = read_file("/etc/nv_tegra_release")
     if l4t or "NVIDIA" in model or "Jetson" in model:
         c.platform = "jetson"
-        mm = re.search(r"R(\d+)[^,]*REVISION:\s*([\d.]+)", l4t)
-        c.l4t = f"{mm.group(1)}.{mm.group(2)}" if mm else ""
+        c.l4t = parse_l4t(l4t)
     elif "MediaTek" in model or "Genio" in model or "MT8" in model:
         c.platform = "mediatek"
     return c

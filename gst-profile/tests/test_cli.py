@@ -1,3 +1,4 @@
+import glob
 import io
 import json
 import os
@@ -34,6 +35,14 @@ class CliTest(unittest.TestCase):
     def test_check_runs(self):
         self.assertEqual(main(["check"]), 0)
 
+    def test_analyze_tolerates_a_malformed_record(self):
+        # a new-element record missing name= must not crash analyze; it's dropped as a parse error.
+        path = os.path.join(tempfile.mkdtemp(), "bad.log")
+        with open(path, "w") as fh:
+            fh.write('0:00:00.1 1 0x1 TRACE GST_TRACER :0:: new-element, thread-id=(guint64)1, ts=(guint64)1, '
+                     'ix=(uint)0, parent-ix=(uint)4294967295, type=(string)GstX, is-bin=(boolean)0;\n')
+        self.assertEqual(main(["analyze", path]), 0)
+
     def test_usage_errors_return_3_not_systemexit(self):
         for argv in ([], ["bogus"], ["run"], ["analyze"], ["run", "--nope", "x"]):
             with redirect_stderr(io.StringIO()):
@@ -43,6 +52,15 @@ class CliTest(unittest.TestCase):
         with redirect_stderr(io.StringIO()):
             self.assertEqual(main(["wrap"]), 3)
             self.assertEqual(main(["wrap", "--"]), 3)
+
+    def test_wrap_bad_binary_returns_3_and_cleans_up(self):
+        before = set(glob.glob("/tmp/gst-profile-*"))
+        with redirect_stderr(io.StringIO()) as err:
+            code = main(["wrap", "--", "./definitely-no-such-binary-xyz"])
+        self.assertEqual(code, 3)
+        self.assertIn("cannot start", err.getvalue())
+        after = set(glob.glob("/tmp/gst-profile-*"))
+        self.assertEqual(after, before)                  # no leaked workdir
 
     @unittest.skipUnless(shutil.which("gst-launch-1.0"), "GStreamer not installed")
     def test_wrap_real_app_gets_topology_and_caps_from_the_log(self):
@@ -76,6 +94,21 @@ class CliTest(unittest.TestCase):
         self.assertGreaterEqual(len(d["series"]["t"]), 4)
         self.assertTrue(any(l["format"] for l in d["graph"]["links"]))          # caps came from the dot dumps
         self.assertTrue(any(e["kind"] == "child-exit" for e in d["events"]))
+
+    @unittest.skipUnless(shutil.which("gst-launch-1.0"), "GStreamer not installed")
+    def test_duration_does_not_hide_a_child_that_died_on_its_own(self):
+        out = os.path.join(tempfile.mkdtemp(), "crash.json")
+        with redirect_stderr(io.StringIO()):
+            code = main(["run", "videotestsrc ! nosuchelementxyz ! fakesink",
+                         "--duration", "2s", "--out", out, "--no-ui"])
+        self.assertEqual(code, 2)
+
+    @unittest.skipUnless(shutil.which("gst-launch-1.0"), "GStreamer not installed")
+    def test_duration_that_stops_a_healthy_child_is_clean(self):
+        out = os.path.join(tempfile.mkdtemp(), "healthy.json")
+        code = main(["run", "videotestsrc is-live=true ! fakesink sync=false",
+                     "--duration", "2s", "--out", out, "--no-ui"])
+        self.assertEqual(code, 0)
 
 
 if __name__ == "__main__":

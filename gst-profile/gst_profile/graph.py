@@ -16,7 +16,9 @@ _MTK_V4L2 = ("v4l2h264enc", "v4l2h265enc", "v4l2h264dec", "v4l2h265dec", "v4l2co
 
 def vendor_of(factory: str, platform: str = "generic") -> str:
     f = (factory or "").lower()
-    if f.startswith("nv") or f.startswith("omx"):
+    if f.startswith("nv"):
+        return "nvidia"
+    if f.startswith("omx") and platform == "jetson":     # gst-omx also exists on RPi/others — not NVIDIA-specific
         return "nvidia"
     if f.startswith("mtk") or f.startswith("neuron"):
         return "mediatek"

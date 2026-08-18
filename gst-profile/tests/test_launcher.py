@@ -20,6 +20,17 @@ FAKE_CHILD = textwrap.dedent('''
     sys.exit(7)
 ''')
 
+# writes fast (~150 us/line) then exits immediately, no trailing sleep: stresses the FIFO-drain race in stop().
+FAST_CHILD = textwrap.dedent('''
+    import os, sys, time
+    with open(os.environ["GST_DEBUG_FILE"], "w") as fh:
+        for i in range(60):
+            fh.write("0:00:00.%09d 1 0x1 TRACE GST_TRACER :0:: element-latency, element-id=(string)0x1, element=(string)e, src=(string)src, time=(guint64)1000, ts=(guint64)%d;\\n" % (i * 1000, i * 1000))
+            fh.flush()
+            time.sleep(0.00015)
+    sys.exit(0)
+''')
+
 
 class LauncherTest(unittest.TestCase):
     def test_build_env(self):
@@ -49,6 +60,21 @@ class LauncherTest(unittest.TestCase):
         self.assertEqual(len(dots), 1)
         self.assertIn("pipeline0", dots[0])
         self.assertFalse(os.path.exists(l.fifo))
+        shutil.rmtree(tmp)
+
+    def test_stop_drains_the_fifo_tail_of_a_fast_child(self):
+        tmp = tempfile.mkdtemp()
+        script = os.path.join(tmp, "fast.py")
+        with open(script, "w") as fh:
+            fh.write(FAST_CHILD)
+        lines = []
+        l = Launcher([sys.executable, script], lines.append, lambda s: None, mode="wrap", workdir=tmp)
+        l.start()
+        self.assertEqual(l.wait(timeout=10), 0)
+        code = l.stop()
+        l.cleanup()
+        self.assertEqual(code, 0)
+        self.assertEqual(len(lines), 60)          # every fast-written line must survive stop()'s FIFO drain
         shutil.rmtree(tmp)
 
     def test_unreadable_dot_is_retried_then_counted(self):
