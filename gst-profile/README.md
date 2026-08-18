@@ -15,6 +15,12 @@ gst-profile wrap --duration 30s -- ./my-app --args      # your binary, your pipe
 gst-profile analyze trace.log.gz --dot pipeline.dot     # offline, from a GST_DEBUG log
 ```
 
+## Analysis and Reporting
+
+The tool produces a **ranked verdict**: a concise summary of where CPU and time go in the pipeline, with findings organized by severity and severity-matched fixes. `run` and `wrap` open a **live view** (a minimal dashboard at `http://<host>:8790`) that streams metrics as the capture runs; use `--no-ui` for headless operation or `--hold N` to keep the view running for N seconds after capture completes. For recorded sessions, `analyze --serve` opens the live view on a stored capture, and `report <session> -o out.html` renders a self-contained static report you can review offline or share.
+
+**Findings are marked *heuristic* until verified on target hardware** — a later version will promote high-confidence rules once they pass golden-pipeline baselines on NVIDIA Jetson and other common platforms. Session JSON and reports may contain pipeline details from your pipeline string — `location=` properties, URIs, and embedded credentials — verbatim; review files before sharing.
+
 Later plans add the rule engine + verdict, the live panel (SSE), the static
 report, the Skill and the bench-verified rules. See the design doc in the
 private production hub.
