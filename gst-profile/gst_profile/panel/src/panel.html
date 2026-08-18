@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gst-profile</title>
+<style>
+/*@inline panel.css*/
+</style>
+</head>
+<body>
+<header id="strip">
+  <span class="brand">gst-profile</span>
+  <span class="stat"><span class="dot" id="statusdot"></span><span id="statustext">connecting…</span><span id="elapsed" class="mono"></span></span>
+  <span id="targetinfo" class="dim"></span>
+  <span id="parseinfo" class="dim"></span>
+  <span class="spacer"></span>
+  <button id="btn-stop" class="ctl" hidden>Stop capture</button>
+  <button id="btn-mark" class="ctl" hidden>Mark</button>
+  <button id="btn-save" class="ctl">Save session</button>
+</header>
+<div id="verdictline" class="mono">waiting for the first window…</div>
+<nav id="tabs">
+  <button class="tab active" data-tab="pipeline">Pipeline</button>
+  <button class="tab" data-tab="timeline">Timeline</button>
+  <button class="tab" data-tab="system">System</button>
+  <button class="tab" data-tab="analysis">Analysis</button>
+</nav>
+<main>
+  <section id="view-pipeline" class="view active">
+    <div id="graphwrap"><svg id="graph" role="img" aria-label="pipeline graph"></svg>
+      <div id="graphempty" class="empty" hidden>waiting for the pipeline topology…</div>
+    </div>
+    <aside id="inspector" hidden></aside>
+  </section>
+  <section id="view-timeline" class="view">
+    <div id="tl-toggles" class="chips"></div>
+    <div class="canvaswrap"><canvas id="tl"></canvas></div>
+  </section>
+  <section id="view-system" class="view">
+    <div class="canvaswrap"><canvas id="sys"></canvas></div>
+  </section>
+  <section id="view-analysis" class="view">
+    <div id="findings"></div>
+    <footer id="an-footer" class="dim"></footer>
+  </section>
+</main>
+<div id="legend" class="dim"></div>
+<footer id="scrub">
+  <button id="btn-live" class="ctl live-pin" title="follow the newest window">LIVE</button>
+  <div id="scrubwrap"><canvas id="scrubcanvas"></canvas></div>
+  <span id="scrubtime" class="mono dim"></span>
+</footer>
+<div id="tooltip" hidden></div>
+<script>
+/*@inline store.js*/
+/*@inline layout.js*/
+/*@inline sparkline.js*/
+/*@inline pipeline_view.js*/
+/*@inline inspector.js*/
+/*@inline timeline_view.js*/
+/*@inline system_view.js*/
+/*@inline analysis_view.js*/
+/*@inline app.js*/
+</script>
+</body>
+</html>

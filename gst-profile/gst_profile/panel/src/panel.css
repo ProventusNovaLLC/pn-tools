@@ -1,0 +1,192 @@
+/* gst-profile panel. Instrument chrome: quiet surfaces, monospace data, one saturated
+   identity — vendor green on the hardware path. Colors are semantic tokens; the
+   memory-domain set (#76B900 / #8f6af2 / #8b93a1) is CVD-validated on both surfaces. */
+:root {
+  --bg: #0e1116; --surface: #161b22; --surface2: #1c232d; --border: #262d38;
+  --ink: #e6e9ee; --ink2: #9aa4b2; --ink3: #5c6773;
+  --nvidia: #76B900; --mediatek: #f5a623; --generic: #4a5261;
+  --nvmm: #76B900; --dmabuf: #8f6af2; --sysmem: #8b93a1; --unknown: #5c6773;
+  --high: #ff5c5c; --medium: #ffb454; --info: #58a6ff;
+  --heat0: #3a4250; --heat1: #ffb454; --heat2: #ff5c5c;
+  --focus: #58a6ff;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f6f8fa; --surface: #ffffff; --surface2: #eef1f5; --border: #d7dde5;
+    --ink: #1a2129; --ink2: #55606e; --ink3: #8a94a1;
+    --nvidia: #538300; --generic: #97a1ad;
+    --nvmm: #538300; --dmabuf: #6d4fd4; --sysmem: #6e7887; --unknown: #98a1ad;
+    --high: #d63a3a; --medium: #b07500; --info: #0969da;
+    --heat0: #d7dde5; --heat1: #b07500; --heat2: #d63a3a;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.mono { font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace; }
+.dim { color: var(--ink2); }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+button:focus-visible, .tab:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+/* ---- status strip ---- */
+#strip {
+  display: flex; align-items: center; gap: 14px; padding: 8px 14px;
+  border-bottom: 1px solid var(--border); flex: none; white-space: nowrap;
+}
+.brand { font-weight: 650; letter-spacing: .01em; }
+.stat { display: inline-flex; align-items: center; gap: 7px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--nvidia); }
+.dot.capturing { animation: breathe 2s ease-in-out infinite; }
+.dot.done { background: var(--ink3); animation: none; }
+.dot.err { background: var(--high); animation: none; }
+@keyframes breathe { 50% { opacity: .35; } }
+#strip .spacer { flex: 1; }
+.ctl {
+  border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; color: var(--ink2);
+}
+.ctl:hover { color: var(--ink); border-color: var(--ink3); }
+#btn-stop { color: var(--high); border-color: color-mix(in srgb, var(--high) 40%, var(--border)); }
+
+/* ---- verdict line ---- */
+#verdictline {
+  padding: 7px 14px; font-size: 12.5px; color: var(--ink2);
+  border-bottom: 1px solid var(--border); flex: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#verdictline b { color: var(--ink); font-weight: 600; }
+
+/* ---- tabs ---- */
+#tabs { display: flex; gap: 2px; padding: 0 10px; border-bottom: 1px solid var(--border); flex: none; }
+.tab {
+  padding: 7px 12px 6px; color: var(--ink2); border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.tab:hover { color: var(--ink); }
+.tab.active { color: var(--ink); border-bottom-color: var(--nvidia); }
+.tab .badge { color: var(--high); font-weight: 700; }
+
+/* ---- views ---- */
+main { flex: 1; min-height: 0; display: flex; }
+.view { display: none; flex: 1; min-width: 0; min-height: 0; }
+.view.active { display: flex; }
+
+/* pipeline */
+#view-pipeline { position: relative; }
+#graphwrap { flex: 1; min-width: 0; overflow: auto; position: relative; }
+#graph { display: block; margin: 22px auto; }
+.empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--ink3); }
+.empty[hidden] { display: none; }
+.node rect.body { fill: var(--surface); stroke: var(--generic); stroke-width: 1.2; rx: 7; }
+.node.v-nvidia rect.body { stroke: var(--nvidia); fill: color-mix(in srgb, var(--nvidia) 9%, var(--surface)); }
+.node.v-mediatek rect.body { stroke: var(--mediatek); fill: color-mix(in srgb, var(--mediatek) 9%, var(--surface)); }
+.node text { fill: var(--ink); font: 12px ui-monospace, Menlo, Consolas, monospace; }
+.node text.iname { fill: var(--ink2); font-size: 10.5px; }
+.node { cursor: pointer; }
+.node:hover rect.body { stroke-width: 2; }
+.node.selected rect.body { stroke-width: 2.4; }
+.node rect.heat { rx: 1.5; }
+.node rect.outline { fill: none; rx: 9; stroke-width: 1.6; stroke-dasharray: 4 3; pointer-events: none; }
+.node.f-high rect.outline { stroke: var(--high); }
+.node.f-medium rect.outline { stroke: var(--medium); }
+.node.f-info rect.outline { stroke: var(--info); }
+.node.f-primary rect.outline { stroke-dasharray: none; stroke-width: 2.2; }
+.edge { fill: none; stroke-linecap: round; }
+.edge.m-nvmm { stroke: var(--nvmm); }
+.edge.m-dmabuf { stroke: var(--dmabuf); }
+.edge.m-sysmem { stroke: var(--sysmem); }
+.edge.m-unknown { stroke: var(--unknown); }
+.edge.stalled { stroke: var(--high) !important; animation: stallpulse 1s ease-in-out infinite; }
+@keyframes stallpulse { 50% { stroke-opacity: .25; } }
+.edgehit { fill: none; stroke: transparent; stroke-width: 14; cursor: pointer; }
+.edge.f-high { filter: drop-shadow(0 0 3px var(--high)); }
+.edge.f-medium { filter: drop-shadow(0 0 3px var(--medium)); }
+.edge.f-info { filter: drop-shadow(0 0 3px var(--info)); }
+
+/* inspector */
+#inspector {
+  width: 300px; flex: none; border-left: 1px solid var(--border); overflow-y: auto;
+  padding: 12px 14px; background: var(--surface);
+}
+#inspector h2 { margin: 0; font-size: 13px; }
+#inspector h2 .fac { font-weight: 650; }
+#inspector .vtag { font-size: 10.5px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--ink2); margin-left: 6px; vertical-align: 1px; }
+#inspector .vtag.v-nvidia { color: var(--nvidia); border-color: var(--nvidia); }
+#inspector .vtag.v-mediatek { color: var(--mediatek); border-color: var(--mediatek); }
+#inspector .sec { margin-top: 12px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink3); }
+#inspector table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+#inspector td { padding: 2px 0; font-size: 12px; vertical-align: top; }
+#inspector td.k { color: var(--ink2); padding-right: 10px; white-space: nowrap; }
+#inspector td.v { word-break: break-all; }
+.spark { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+.spark canvas { flex: none; background: var(--surface2); border-radius: 3px; }
+.spark .lab { flex: 1; font-size: 11.5px; color: var(--ink2); }
+.spark .val { font-size: 11.5px; }
+#inspector .fchip { display: block; width: 100%; text-align: left; margin: 4px 0 0; padding: 4px 8px; border-radius: 5px; font-size: 11.5px; border: 1px solid var(--border); cursor: pointer; }
+#inspector .fchip.high { border-color: var(--high); color: var(--high); }
+#inspector .fchip.medium { border-color: var(--medium); color: var(--medium); }
+#inspector .fchip.info { border-color: var(--info); color: var(--info); }
+#inspector .close { float: right; color: var(--ink3); font-size: 15px; padding: 0 4px; }
+
+/* timeline / system */
+#view-timeline, #view-system { flex-direction: column; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px 0; flex: none; }
+.chips button { border: 1px solid var(--border); border-radius: 12px; padding: 1px 10px; font-size: 11.5px; color: var(--ink2); font-family: ui-monospace, Menlo, Consolas, monospace; }
+.chips button.on { color: var(--ink); border-color: var(--ink3); background: var(--surface2); }
+.canvaswrap { flex: 1; min-height: 0; position: relative; }
+.canvaswrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* analysis */
+#view-analysis { flex-direction: column; overflow-y: auto; display: none; }
+#view-analysis.active { display: block; }
+#findings { padding: 12px 14px; max-width: 880px; }
+.finding { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--info); border-radius: 6px; margin-bottom: 9px; }
+.finding.high { border-left-color: var(--high); }
+.finding.medium { border-left-color: var(--medium); }
+.finding > .head { display: flex; align-items: baseline; gap: 10px; padding: 9px 12px; cursor: pointer; }
+.finding .sev { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--ink2); min-width: 52px; }
+.finding.high .sev { color: var(--high); } .finding.medium .sev { color: var(--medium); }
+.finding .rule { font-size: 11px; color: var(--ink3); min-width: 44px; }
+.finding .title { flex: 1; font-weight: 550; }
+.finding .share { color: var(--ink2); font-size: 12px; }
+.finding .heur { font-size: 10.5px; color: var(--ink3); font-style: italic; }
+.finding .body { display: none; padding: 2px 12px 11px 12px; border-top: 1px solid var(--border); }
+.finding.open .body { display: block; }
+.finding .body h4 { margin: 10px 0 3px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink3); }
+.finding .body p { margin: 3px 0; color: var(--ink2); }
+.finding .ev td { padding: 1px 0; font-size: 12px; }
+.finding .ev td.k { color: var(--ink2); padding-right: 12px; }
+.finding .patch { background: var(--surface2); border-radius: 5px; padding: 7px 9px; font-size: 12px; margin-top: 4px; overflow-x: auto; white-space: pre-wrap; }
+.finding .patch del { color: var(--high); text-decoration: line-through; background: none; }
+.finding .patch ins { color: var(--nvidia); text-decoration: none; font-weight: 600; }
+.finding .actions { margin-top: 9px; display: flex; gap: 12px; align-items: center; }
+.finding .actions a { color: var(--info); text-decoration: none; font-size: 12px; }
+.finding .actions a:hover { text-decoration: underline; }
+.finding .actions button { color: var(--info); font-size: 12px; padding: 0; }
+#an-footer { padding: 4px 14px 16px; font-size: 12px; }
+#an-footer a { color: var(--info); }
+
+/* legend + scrubber */
+#legend { padding: 4px 14px; font-size: 11.5px; flex: none; border-top: 1px solid var(--border); }
+#legend .sw { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: 3px; margin: 0 4px 0 10px; }
+#scrub { display: flex; align-items: center; gap: 10px; padding: 6px 14px 9px; border-top: 1px solid var(--border); flex: none; }
+.live-pin { font-size: 10.5px; letter-spacing: .08em; padding: 2px 8px; }
+.live-pin.on { color: var(--nvidia); border-color: var(--nvidia); }
+#scrubwrap { flex: 1; height: 30px; position: relative; }
+#scrubcanvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+#scrubtime { min-width: 88px; text-align: right; font-size: 11.5px; }
+
+/* tooltip */
+#tooltip {
+  position: fixed; z-index: 10; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; padding: 7px 10px; font-size: 11.5px; max-width: 380px; pointer-events: none;
+  box-shadow: 0 4px 14px rgba(0,0,0,.35); color: var(--ink2);
+}
+#tooltip b { color: var(--ink); }
+#tooltip .mono { word-break: break-all; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dot.capturing, .edge.stalled { animation: none; }
+}
