@@ -1,0 +1,61 @@
+<!doctype html>
+<meta charset="utf-8"><title>gst-profile</title>
+<style>
+ :root{--bg:#0f1115;--fg:#e6e8eb;--dim:#8b93a1;--hi:#ff5a5a;--med:#ffb454;--info:#5a9cff;--nv:#76b900;--card:#171a21}
+ body{margin:0;font:14px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+ header{padding:12px 18px;border-bottom:1px solid #232833;display:flex;gap:16px;align-items:baseline}
+ .dot{width:9px;height:9px;border-radius:50%;background:var(--nv);display:inline-block;margin-right:6px}
+ .dot.done{background:var(--dim)}
+ main{padding:18px;max-width:900px}
+ .hdr{color:var(--dim);margin:6px 0 16px}
+ .hot{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px}
+ .chip{background:var(--card);border-radius:6px;padding:4px 9px}
+ .chip b{color:var(--nv)}
+ .f{background:var(--card);border-left:3px solid var(--info);border-radius:4px;padding:10px 12px;margin:8px 0}
+ .f.high{border-color:var(--hi)} .f.medium{border-color:var(--med)}
+ .f .sev{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--dim)}
+ .f .why,.f .fix{color:var(--dim);font-size:13px;margin-top:3px}
+ .heur{color:var(--dim);font-style:italic;font-size:12px}
+ a{color:var(--info)}
+</style>
+<header>
+ <strong>gst-profile</strong>
+ <span id="status"><span class="dot" id="statusdot"></span><span id="statustext">connecting…</span></span>
+ <span id="rows" style="color:var(--dim)"></span>
+</header>
+<main>
+ <div class="hdr" id="header">waiting for the first window…</div>
+ <div class="hot" id="hot"></div>
+ <div id="findings"></div>
+ <p style="color:var(--dim);font-size:12px">Live view — the full pipeline panel arrives in a later version.
+  Findings marked <span class="heur">heuristic</span> are not yet bench-verified.</p>
+</main>
+<script>
+ const $=id=>document.getElementById(id);
+ let verdict=null;
+ function sevClass(s){return s==='high'?'high':s==='medium'?'medium':''}
+ function render(){
+   if(!verdict)return;
+   $('header').textContent=verdict.header||'';
+   $('hot').innerHTML=(verdict.hot||[]).map(h=>`<span class="chip">${h.element} <b>${h.share_pct}%</b></span>`).join('');
+   $('findings').innerHTML=(verdict.findings||[]).map(f=>`
+     <div class="f ${sevClass(f.severity)}">
+       <div class="sev">${f.severity} · ${f.rule}${f.heuristic&&f.severity==='info'&&f.rule!=='HOT'&&f.rule!=='OK'?' · <span class="heur">heuristic</span>':''}</div>
+       <div><strong>${f.title}</strong></div>
+       <div class="why">${f.why||''}</div>
+       <div class="fix">→ ${f.fix_text||''}</div>
+     </div>`).join('');
+ }
+ if(window.__VERDICT__){                       // static report: render the embedded verdict, no stream
+   verdict=window.__VERDICT__;$('statustext').textContent='report';$('statusdot').className='dot done';
+   if(window.__META__)$('rows').textContent=window.__META__;render();
+ } else {
+ const es=new EventSource('/events');
+ es.addEventListener('status',e=>{const d=JSON.parse(e.data);const done=d.state==='done';
+   $('statustext').textContent=d.state;$('statusdot').className='dot'+(done?' done':'');});
+ es.addEventListener('tick',e=>{const d=JSON.parse(e.data);$('rows').textContent='window '+d.t+'s ('+d.rows+' rows)';});
+ es.addEventListener('findings',e=>{verdict=JSON.parse(e.data);render();});
+ es.addEventListener('verdict',e=>{verdict=JSON.parse(e.data);render();});
+ es.onerror=()=>{$('statustext').textContent='disconnected';$('statusdot').className='dot done';};
+ }
+</script>
