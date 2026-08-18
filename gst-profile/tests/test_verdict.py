@@ -40,6 +40,11 @@ class VerdictTest(unittest.TestCase):
         rules.VERIFIED_RULES.update({"ZC": ["hw"]})
         self.assertTrue(verdict.to_dict(a, rules.run_rules(a))["has_high_or_medium"])
 
+    def test_header_shows_frame_period_even_without_latency(self):
+        a = analysis.build(load("jetson-zc-break.json"))
+        a.latency_ms_p95 = None                      # no source->sink latency records, but fps is known
+        self.assertIn("frame period", verdict.header(a))
+
     def test_healthy_verdict_is_clean(self):
         a = analysis.build(load("software-healthy.json"))
         txt = verdict.render_text(a, rules.run_rules(a))

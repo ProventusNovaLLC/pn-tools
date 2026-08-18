@@ -66,7 +66,18 @@ class ServerTest(unittest.TestCase):
         c.request("POST", "/control", body=body, headers={"Content-Length": str(len(body))})
         r = c.getresponse(); self.assertTrue(json.loads(r.read())["ok"])
         self.assertEqual(posted.get("action"), "stop")
+        # a malformed Content-Length must yield a clean 400, not a stderr traceback
+        c.request("POST", "/control", body=b"{}", headers={"Content-Length": "abc"})
+        r = c.getresponse(); self.assertEqual(r.status, 400); r.read()
         c.close()
+
+    def test_sticky_replacement_keeps_only_the_latest(self):
+        b, server = self.make()
+        b.publish("findings", [{"n": 1}], sticky=True)
+        b.publish("findings", [{"n": 2}], sticky=True)   # same event type twice -> only the latest replays
+        frames = read_stream(server.port, seconds=1.0)
+        findings = [d for e, d in frames if e == "findings"]
+        self.assertEqual(findings, ['[{"n": 2}]'])
 
 
 if __name__ == "__main__":

@@ -8,7 +8,9 @@ def header(a) -> str:
     fp = a.frame_period_ms
     parts = []
     if lat is not None:
-        parts.append(f"pipeline latency p95 {lat:.1f} ms" + (f" (frame period {fp:.1f} ms)" if fp else ""))
+        parts.append(f"pipeline latency p95 {lat:.1f} ms" + (f" (frame period {fp:.1f} ms)" if fp is not None else ""))
+    elif fp is not None:
+        parts.append(f"frame period {fp:.1f} ms")
     hot = a.hot_share()
     if hot:
         where = " · ".join(f"{eid} {share:.0f}%" for eid, _, share in hot[:3])

@@ -80,13 +80,17 @@ def make_handler(broker: Broker, snapshot: Callable[[], dict], control: Callable
         def do_POST(self):
             if not self.path.startswith("/control"):
                 self._send(404, "text/plain", b"not found"); return
-            n = int(self.headers.get("Content-Length", 0))
+            try:
+                n = int(self.headers.get("Content-Length", 0) or 0)
+            except ValueError:
+                self._send(400, "text/plain", b"bad content-length"); return
             try:
                 req = json.loads(self.rfile.read(n) or b"{}")
             except ValueError:
                 self._send(400, "text/plain", b"bad json"); return
             self._send(200, "application/json", json.dumps(control(req)).encode())
         def _stream(self):
+            self.close_connection = True          # SSE is terminal: don't re-loop into readline when the stream ends
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
