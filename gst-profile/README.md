@@ -21,9 +21,8 @@ The tool produces a **ranked verdict**: a concise summary of where CPU and time 
 
 **Findings are marked *heuristic* until verified on target hardware** — a later version will promote high-confidence rules once they pass golden-pipeline baselines on NVIDIA Jetson and other common platforms. Session JSON and reports may contain pipeline details from your pipeline string — `location=` properties, URIs, and embedded credentials — verbatim; review files before sharing.
 
-Later plans add the rule engine + verdict, the live panel (SSE), the static
-report, the Skill and the bench-verified rules. See the design doc in the
-private production hub.
+Later plans add the rich pipeline panel, bench-verified rules, and the public
+Skill. See the design doc in the private production hub.
 
 `gst-profile` sets (and overrides) `GST_DEBUG`, `GST_DEBUG_FILE`, and
 `GST_DEBUG_DUMP_DOT_DIR` in the profiled child's environment — anything your
