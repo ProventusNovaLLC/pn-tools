@@ -42,6 +42,21 @@ class AnalyzeVerdictTest(unittest.TestCase):
         self.assertIn("Zero-copy broken", html)
         self.assertNotIn("http://", html.split("scoping")[0] if "scoping" in html else html)  # no external hosts in the doc head/body
 
+    def test_report_escapes_script_in_pipeline_text(self):
+        # element props containing </script> must not break out of the embedded verdict script
+        with open(os.path.join(FX, "jetson-zc-break.json")) as fh:
+            s = json.load(fh)
+        s["graph"]["elements"][0]["props"] = {"location": "rtsp://x/</script><script>alert(1)</script>"}
+        src = os.path.join(tempfile.mkdtemp(), "s.json")
+        with open(src, "w") as fh:
+            json.dump(s, fh)
+        out_html = os.path.join(tempfile.mkdtemp(), "r.html")
+        self.assertEqual(run_cli(["report", src, "-o", out_html])[0], 0)
+        with open(out_html, encoding="utf-8") as fh:
+            html = fh.read()
+        self.assertNotIn("</script><script>alert(1)", html)   # the raw injected tag is escaped, not literal
+        self.assertIn("u003c", html)                          # < was escaped to \u003c in the embedded JSON
+
 
 @unittest.skipUnless(HAS_GST, "GStreamer not installed")
 class LiveRunTest(unittest.TestCase):

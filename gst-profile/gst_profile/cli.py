@@ -97,7 +97,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 # ---- verdict helpers -------------------------------------------------------------------
 def _verdict_of(session_dict):
-    rules.VERIFIED_RULES  # (populated by Plan 4; empty here means every diagnostic finding is info)
+    # rules.VERIFIED_RULES is populated by Plan 4; empty here means every diagnostic finding is info.
     a = analysis.build(session_dict)
     fs = rules.run_rules(a)
     return a, fs
@@ -160,6 +160,7 @@ def _capture(session, cmd, mode, args, caps=None) -> int:
     print(f"gst-profile: capturing ({mode})  pid={launcher.proc.pid}" + (f"  duration={duration}s" if duration else ""), file=sys.stderr)
 
     started = time.monotonic()
+    t_start = time.time()
     handlers = []
     def on_stop_signal(_s, _f):
         stopping["flag"] = True
@@ -174,57 +175,62 @@ def _capture(session, cmd, mode, args, caps=None) -> int:
                     pass
     child_self_exited = False
     try:
-        while launcher.running() and not stopping["flag"]:
-            time.sleep(0.25)
-            now = time.monotonic()
-            with lock:
-                session.ingest_cpu(ps.sample(now))
-                if tegra.available:
-                    session.ingest_tegrastats(tegra.latest())
-                d = session.to_dict()
-                nrows = len(d["series"]["t"])
-            if broker and nrows > last_rows[0]:
-                last_rows[0] = nrows
-                broker.publish("tick", {"t": d["series"]["t"][-1], "rows": nrows,
-                                        "latency_ms_p95": d["series"]["pipeline"]["latency_ms_p95"][-1]})
-                broker.publish("findings", _findings_payload(d), sticky=True)
-            if duration and now - started >= duration:
-                break
-        child_self_exited = not launcher.running() and not stopping["flag"]
-        code = launcher.stop()
+        try:
+            while launcher.running() and not stopping["flag"]:
+                time.sleep(0.25)
+                now = time.monotonic()
+                with lock:
+                    session.ingest_cpu(ps.sample(now))
+                    if tegra.available:
+                        session.ingest_tegrastats(tegra.latest())
+                    d = session.to_dict()
+                    nrows = len(d["series"]["t"])
+                if broker and nrows > last_rows[0]:
+                    last_rows[0] = nrows
+                    broker.publish("tick", {"t": d["series"]["t"][-1], "rows": nrows,
+                                            "latency_ms_p95": d["series"]["pipeline"]["latency_ms_p95"][-1]})
+                    broker.publish("findings", _findings_payload(d), sticky=True)
+                if duration and now - started >= duration:
+                    break
+            child_self_exited = not launcher.running() and not stopping["flag"]
+            code = launcher.stop()
+        finally:
+            tegra.stop()
+            launcher.cleanup()
+
+        with lock:
+            session.flush_pending()
+            session.duration_s = round(time.time() - t_start, 3)     # wall-clock duration (Plan 1 F13)
+            session.add_event("child-exit", f"exit code {code}")
+            session.notes.append(f"lines read {launcher.lines_read}, dropped {launcher.dropped}, dot files dropped {launcher.dots_dropped}")
+            d = session.to_dict()
+
+        out = args.out or f"gst-profile-{session.id}.json"
+        with open(out, "w") as fh:
+            fh.write(json.dumps(d))
+        print(f"gst-profile: session written to {out}", file=sys.stderr)
+
+        a, fs = _verdict_of(d)
+        print(verdict.render_text(a, fs))
+        exit_findings = any(f.severity in ("high", "medium") for f in fs)
+
+        if server:
+            broker.publish("findings", verdict.to_dict(a, fs), sticky=True)
+            broker.publish("status", {"state": "done"}, sticky=True)
+            if hold and not stopping["flag"]:
+                url_host = "127.0.0.1" if args.host in ("0.0.0.0", "::") else args.host
+                print(f"gst-profile: capture done — live view held at http://{url_host}:{server.port} for {int(hold)}s (Ctrl-C to exit now)", file=sys.stderr)
+                deadline = time.monotonic() + hold
+                try:
+                    while time.monotonic() < deadline and not stopping["flag"]:
+                        time.sleep(0.2)
+                except KeyboardInterrupt:
+                    pass
     finally:
-        tegra.stop()
-        launcher.cleanup()
-    with lock:
-        session.flush_pending()
-        session.add_event("child-exit", f"exit code {code}")
-        session.notes.append(f"lines read {launcher.lines_read}, dropped {launcher.dropped}, dot files dropped {launcher.dots_dropped}")
-        d = session.to_dict()
-
-    out = args.out or f"gst-profile-{session.id}.json"
-    with open(out, "w") as fh:
-        fh.write(json.dumps(d))
-    print(f"gst-profile: session written to {out}", file=sys.stderr)
-
-    a, fs = _verdict_of(d)
-    print(verdict.render_text(a, fs))
-    exit_findings = any(f.severity in ("high", "medium") for f in fs)
-
-    if server:
-        broker.publish("findings", verdict.to_dict(a, fs), sticky=True)
-        broker.publish("status", {"state": "done"}, sticky=True)
-        if hold and not stopping["flag"]:
-            url_host = "127.0.0.1" if args.host in ("0.0.0.0", "::") else args.host
-            print(f"gst-profile: capture done — live view held at http://{url_host}:{server.port} for {int(hold)}s (Ctrl-C to exit now)", file=sys.stderr)
-            deadline = time.monotonic() + hold
-            try:
-                while time.monotonic() < deadline and not stopping["flag"]:
-                    time.sleep(0.2)
-            except KeyboardInterrupt:
-                pass
-        server.stop()
-    for sig, old in handlers:
-        signal.signal(sig, old)
+        if server:
+            server.stop()                            # always tear down the HTTP server + restore signals
+        for sig, old in handlers:
+            signal.signal(sig, old)
 
     if child_self_exited and code not in (0, None):
         return EXIT_CHILD_FAILED
@@ -331,7 +337,9 @@ def cmd_report(args) -> int:
     payload = _findings_payload(d)
     meta = f"{d['session'].get('mode','?')} · {d['session'].get('duration_s',0)}s · {len(d['series']['t'])} windows"
     page = _page()
-    inject = ("<script>window.__VERDICT__=" + json.dumps(payload) + ";window.__META__=" + json.dumps(meta) + ";</script>")
+    def _embed(obj):
+        return json.dumps(obj).replace("<", "\\u003c")   # so pipeline text containing </script> can't break out
+    inject = ("<script>window.__VERDICT__=" + _embed(payload) + ";window.__META__=" + _embed(meta) + ";</script>")
     html = page.replace("<script>", inject + "\n<script>", 1)
     with open(args.out, "w", encoding="utf-8") as fh:
         fh.write(html)
