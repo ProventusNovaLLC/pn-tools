@@ -19,7 +19,7 @@ from .launcher import Launcher
 from .procstat import ProcStat
 from .tegrastats import TegrastatsSource
 from .launchparse import parse_launch, LaunchParseError
-from . import analysis, rules, verdict, server as srv
+from . import analysis, rules, verdict, redact, server as srv
 
 EXIT_CLEAN, EXIT_FINDINGS, EXIT_CHILD_FAILED, EXIT_USAGE = 0, 1, 2, 3
 
@@ -92,6 +92,8 @@ def build_parser() -> argparse.ArgumentParser:
     rp = sub.add_parser("report", help="write a self-contained HTML report from a session JSON")
     rp.add_argument("path")
     rp.add_argument("-o", "--out", required=True, help="output .html path")
+    rp.add_argument("--no-redact", action="store_true",
+                    help="keep locations/credentials in the report (default: redacted for sharing)")
     return p
 
 
@@ -379,19 +381,26 @@ def cmd_report(args) -> int:
         return EXIT_USAGE
     try:
         d = _load_session_dict(args.path)
-        payload = _findings_payload(d)
+        a, fs = _verdict_of(d)
     except (KeyError, ValueError, TypeError) as e:
         print(f"gst-profile: {args.path} is not a usable session ({e})", file=sys.stderr)
         return EXIT_USAGE
-    meta = f"{d['session'].get('mode','?')} · {d['session'].get('duration_s',0)}s · {len(d['series']['t'])} windows"
+    payload = verdict.to_dict(a, fs)
+    d["findings"] = payload["findings"]
+    if not args.no_redact:
+        d = redact.redact_session(d)
+        payload["findings"] = d["findings"]              # redacted text in the verdict too
     page = _page()
+
     def _embed(obj):
         return json.dumps(obj).replace("<", "\\u003c")   # so pipeline text containing </script> can't break out
-    inject = ("<script>window.__VERDICT__=" + _embed(payload) + ";window.__META__=" + _embed(meta) + ";</script>")
+    inject = ("<script>window.__SESSION__=" + _embed(d) +
+              ";window.__VERDICT__=" + _embed(payload) + ";</script>")
     html = page.replace("<script>", inject + "\n<script>", 1)
     with open(args.out, "w", encoding="utf-8") as fh:
         fh.write(html)
-    print(f"gst-profile: report written to {args.out}", file=sys.stderr)
+    note = "" if args.no_redact else " (redacted; --no-redact to keep endpoints)"
+    print(f"gst-profile: report written to {args.out}{note}", file=sys.stderr)
     return EXIT_CLEAN
 
 

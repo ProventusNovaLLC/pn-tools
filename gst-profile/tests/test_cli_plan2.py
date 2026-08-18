@@ -47,6 +47,7 @@ class AnalyzeVerdictTest(unittest.TestCase):
         with open(out_html, encoding="utf-8") as fh:
             html = fh.read()
         self.assertIn("__VERDICT__", html)
+        self.assertIn("__SESSION__", html)
         self.assertIn("Zero-copy broken", html)
         self.assertNotIn("http://", html.split("scoping")[0] if "scoping" in html else html)  # no external hosts in the doc head/body
 
@@ -64,6 +65,25 @@ class AnalyzeVerdictTest(unittest.TestCase):
             html = fh.read()
         self.assertNotIn("</script><script>alert(1)", html)   # the raw injected tag is escaped, not literal
         self.assertIn("u003c", html)                          # < was escaped to \u003c in the embedded JSON
+
+    def test_report_redacts_by_default_and_no_redact_keeps(self):
+        with open(os.path.join(FX, "jetson-zc-break.json")) as fh:
+            d = json.load(fh)
+        d["session"]["launch"] = "rtspsrc location=rtsp://u:p@cam/1 ! fakesink"
+        src = os.path.join(tempfile.mkdtemp(), "s.json")
+        with open(src, "w") as fh:
+            json.dump(d, fh)
+        out = os.path.join(tempfile.mkdtemp(), "r.html")
+        self.assertEqual(run_cli(["report", src, "-o", out])[0], 0)
+        with open(out) as fh:
+            html = fh.read()
+        self.assertNotIn("u:p", html)
+        self.assertIn("[redacted]", html)
+        out2 = os.path.join(tempfile.mkdtemp(), "r2.html")
+        self.assertEqual(run_cli(["report", src, "-o", out2, "--no-redact"])[0], 0)
+        with open(out2) as fh:
+            html2 = fh.read()
+        self.assertIn("u:p@cam", html2)
 
 
 @unittest.skipUnless(HAS_GST, "GStreamer not installed")
