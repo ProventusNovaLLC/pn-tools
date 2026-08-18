@@ -1,10 +1,10 @@
+import io
 import json
 import os
 import shutil
-import subprocess
-import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from gst_profile.cli import main, _parse_duration
 
 HERE = os.path.dirname(__file__)
@@ -33,6 +33,33 @@ class CliTest(unittest.TestCase):
 
     def test_check_runs(self):
         self.assertEqual(main(["check"]), 0)
+
+    def test_usage_errors_return_3_not_systemexit(self):
+        for argv in ([], ["bogus"], ["run"], ["analyze"], ["run", "--nope", "x"]):
+            with redirect_stderr(io.StringIO()):
+                self.assertEqual(main(argv), 3, argv)
+
+    def test_wrap_requires_a_command(self):
+        with redirect_stderr(io.StringIO()):
+            self.assertEqual(main(["wrap"]), 3)
+            self.assertEqual(main(["wrap", "--"]), 3)
+
+    @unittest.skipUnless(shutil.which("gst-launch-1.0"), "GStreamer not installed")
+    def test_wrap_real_app_gets_topology_and_caps_from_the_log(self):
+        out = os.path.join(tempfile.mkdtemp(), "wrap.json")
+        # gst-launch stands in for "your binary": wrap mode must not depend on dot dumps for topology or caps
+        code = main(["wrap", "--duration", "3s", "--out", out, "--",
+                     "gst-launch-1.0", "-q", "videotestsrc", "num-buffers=45", "!", "video/x-raw,width=320,height=240,framerate=30/1",
+                     "!", "videoconvert", "!", "video/x-raw,format=NV12", "!", "fakesink", "sync=false"])
+        self.assertEqual(code, 0)
+        with open(out) as fh:
+            d = json.load(fh)
+        self.assertEqual(d["session"]["mode"], "wrap")
+        self.assertEqual(d["session"]["command"][0], "gst-launch-1.0")
+        ids = {e["id"] for e in d["graph"]["elements"]}
+        self.assertTrue({"videotestsrc0", "videoconvert0", "fakesink0"} <= ids)
+        self.assertTrue(all(l["memory"] == "sysmem" for l in d["graph"]["links"]))
+        self.assertTrue(any(l["format"] == "NV12" for l in d["graph"]["links"]))     # caps came from GST_EVENT lines
 
     @unittest.skipUnless(shutil.which("gst-launch-1.0"), "GStreamer not installed")
     def test_run_real_pipeline(self):

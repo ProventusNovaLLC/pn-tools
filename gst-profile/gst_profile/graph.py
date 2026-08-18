@@ -48,12 +48,17 @@ class Link:
     format: Optional[str] = None
     media: str = ""
 
-    def set_caps(self, caps_text: str, platform: str = "generic"):
+    def set_caps(self, caps_text: str, platform: str = "generic") -> bool:
+        """Apply negotiated caps. Empty / ANY / EMPTY caps (e.g. from a dot dump taken before negotiation
+        or during teardown) never overwrite caps already known — returns False when ignored."""
         c = parse_caps(caps_text)
+        if not c.media or c.media in ("ANY", "EMPTY", "NULL"):
+            return False
         self.caps = caps_text.replace("\\l", " ").strip() if "\\l" in caps_text else caps_text
         self.memory = memory_domain(c, platform)
         self.format = c.format
         self.media = c.media
+        return True
 
 
 @dataclass
@@ -105,11 +110,13 @@ class Graph:
     def set_pad_caps(self, sink_pad: str, caps: str) -> bool:
         """Caps event seen on a sink pad ("element:pad") -> apply to the link feeding it
         (now, or when that link appears — negotiation happens before the first buffer)."""
+        c = parse_caps(caps)
+        if not c.media or c.media in ("ANY", "EMPTY", "NULL"):
+            return False                                    # nothing negotiated yet; keep what we know
         self._pad_caps[sink_pad] = caps
         for link in self.links.values():
             if link.sink == sink_pad:
-                link.set_caps(caps, self.platform)
-                return True
+                return link.set_caps(caps, self.platform)
         return False
 
     # ---- feed from tracer records ------------------------------------

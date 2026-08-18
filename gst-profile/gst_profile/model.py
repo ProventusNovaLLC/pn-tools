@@ -127,6 +127,11 @@ class Session:
     def tick(self, now_ns: int):
         self.agg.close_window(now_ns)
 
+    def flush_pending(self):
+        """Close the window currently being filled (call once at the end of a capture or an offline parse)."""
+        if self.agg.t0_ns is not None and self.agg._win_start is not None:
+            self.agg.close_window(self.agg._win_start + self.agg.window_ns)
+
     # ---- serialization -------------------------------------------------------
     def to_dict(self) -> dict:
         series = self.series_dict()

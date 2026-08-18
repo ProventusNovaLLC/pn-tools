@@ -21,6 +21,20 @@ from .launchparse import parse_launch, LaunchParseError
 EXIT_CLEAN, EXIT_FINDINGS, EXIT_CHILD_FAILED, EXIT_USAGE = 0, 1, 2, 3
 
 
+class UsageError(Exception):
+    pass
+
+
+class _Parser(argparse.ArgumentParser):
+    """argparse that reports usage errors through main()'s exit-code contract (3) instead of SystemExit(2).
+    --help/--version still exit 0 the argparse way."""
+
+    def error(self, message):
+        self.print_usage(sys.stderr)
+        print(f"{self.prog}: error: {message}", file=sys.stderr)
+        raise UsageError(message)
+
+
 def _parse_duration(s: Optional[str]) -> Optional[float]:
     if not s:
         return None
@@ -36,9 +50,9 @@ def _parse_duration(s: Optional[str]) -> Optional[float]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="gst-profile", description="Live GStreamer pipeline profiler: where does the time go?")
+    p = _Parser(prog="gst-profile", description="Live GStreamer pipeline profiler: where does the time go?")
     p.add_argument("--version", action="version", version=f"gst-profile {__version__}")
-    sub = p.add_subparsers(dest="cmd", required=True)
+    sub = p.add_subparsers(dest="cmd", required=True, parser_class=_Parser)
 
     sub.add_parser("check", help="preflight: what can this machine measure?")
 
@@ -111,8 +125,8 @@ def cmd_check(_args) -> int:
     return EXIT_CLEAN
 
 
-def _capture(session: Session, cmd: List[str], mode: str, args) -> int:
-    caps = check()
+def _capture(session: Session, cmd: List[str], mode: str, args, caps=None) -> int:
+    caps = caps or check()
     session.target = caps.to_target()
     session.graph.platform = caps.platform
     duration = _parse_duration(args.duration)
@@ -140,6 +154,9 @@ def _capture(session: Session, cmd: List[str], mode: str, args) -> int:
         stopping["flag"] = True
     old = signal.signal(signal.SIGINT, on_sigint)
     try:
+        # Windows advance only from record timestamps (the tracer's clock); this loop samples the system.
+        # A silent pipeline therefore produces no new windows in this plan — the live server (Plan 2)
+        # advances the axis during silence using CLOCK_MONOTONIC, which is the tracer's clock domain.
         while launcher.running() and not stopping["flag"]:
             time.sleep(0.25)
             now = time.time()
@@ -147,21 +164,17 @@ def _capture(session: Session, cmd: List[str], mode: str, args) -> int:
                 session.ingest_cpu(ps.sample(now))
                 if tegra.available:
                     session.ingest_tegrastats(tegra.latest())
-                # tick in the tracer's clock domain: latest record ts (wall clock of the child) + window
-                if session.agg.t0_ns is not None and session.agg._win_start is not None:
-                    session.agg.close_window(session.agg._win_start)   # no-op unless a record moved us past a window
             if duration and now - started >= duration:
                 break
     finally:
         signal.signal(signal.SIGINT, old)
-    code = launcher.stop()
-    tegra.stop()
+        code = launcher.stop()                     # never orphan the child, whatever happened above
+        tegra.stop()
+        launcher.cleanup()
     with lock:
-        if session.agg._win_start is not None:
-            session.agg.close_window(session.agg._win_start + session.agg.window_ns)
+        session.flush_pending()
         session.add_event("child-exit", f"exit code {code}")
-        session.notes.append(f"lines read {launcher.lines_read}, dropped {launcher.dropped}")
-    launcher.cleanup()
+        session.notes.append(f"lines read {launcher.lines_read}, dropped {launcher.dropped}, dot files dropped {launcher.dots_dropped}")
     out = args.out or f"gst-profile-{session.id}.json"
     with open(out, "w") as fh:
         fh.write(session.to_json())
@@ -192,7 +205,7 @@ def cmd_run(args) -> int:
     for l in static_graph.links.values():
         session.graph.add_link(l.src, l.sink, caps=l.caps)
     cmd = [caps.gst_launch, "-q"] + shlex.split(args.launch)
-    return _capture(session, cmd, "run", args)
+    return _capture(session, cmd, "run", args, caps=caps)
 
 
 def cmd_wrap(args) -> int:
@@ -224,8 +237,7 @@ def cmd_analyze(args) -> int:
         for dp in args.dot:
             with open(dp) as fh:
                 session.ingest_dot(fh.read())
-        if session.agg._win_start is not None:
-            session.agg.close_window(session.agg._win_start + session.agg.window_ns)
+        session.flush_pending()
     if args.out:
         with open(args.out, "w") as fh:
             fh.write(session.to_json())
@@ -236,7 +248,10 @@ def cmd_analyze(args) -> int:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    args = build_parser().parse_args(argv)
+    try:
+        args = build_parser().parse_args(argv)
+    except UsageError:
+        return EXIT_USAGE
     return {"check": cmd_check, "run": cmd_run, "wrap": cmd_wrap, "analyze": cmd_analyze}[args.cmd](args)
 
 

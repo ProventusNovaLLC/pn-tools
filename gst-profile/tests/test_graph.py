@@ -40,6 +40,17 @@ class GraphTest(unittest.TestCase):
         self.assertFalse(g.ingest_record(rec("buffer", **{"pad-ix": 1, "peer-pad-ix": 0})))
         self.assertEqual(len(g.links), 1)
 
+    def test_unnegotiated_caps_never_downgrade_known_caps(self):
+        g = Graph(platform="jetson")
+        link = g.add_link("nvvidconv0:src", "nvv4l2h264enc0:sink", caps="video/x-raw(memory:NVMM), format=(string)NV12")
+        self.assertEqual((link.memory, link.format), ("nvmm", "NV12"))
+        for teardown_caps in ("", "   ", "ANY", "EMPTY"):                 # what NULL_READY / PAUSED_READY dumps carry
+            self.assertFalse(link.set_caps(teardown_caps, "jetson"))
+            g.add_link("nvvidconv0:src", "nvv4l2h264enc0:sink", caps=teardown_caps)
+        self.assertEqual((link.memory, link.format), ("nvmm", "NV12"))
+        self.assertFalse(g.set_pad_caps("nvv4l2h264enc0:sink", "ANY"))
+        self.assertEqual(link.memory, "nvmm")
+
     def test_dict_roundtrip(self):
         g = Graph(platform="jetson")
         g.add_element("nvvidconv0", factory="nvvidconv").props["flip-method"] = "2"
