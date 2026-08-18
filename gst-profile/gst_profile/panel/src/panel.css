@@ -88,6 +88,10 @@ main { flex: 1; min-height: 0; display: flex; }
 .node:hover rect.body { stroke-width: 2; }
 .node.selected rect.body { stroke-width: 2.4; }
 .node rect.heat { rx: 1.5; }
+.node.idle { opacity: .42; }
+.node.idle:hover { opacity: .72; }
+.node .idle-tag { display: none; fill: var(--ink3); font: 9px ui-monospace, Menlo, Consolas, monospace; text-anchor: end; text-transform: uppercase; letter-spacing: .06em; }
+.node.idle .idle-tag { display: block; }
 .node rect.outline { fill: none; rx: 9; stroke-width: 1.6; stroke-dasharray: 4 3; pointer-events: none; }
 .node.f-high rect.outline { stroke: var(--high); }
 .node.f-medium rect.outline { stroke: var(--medium); }

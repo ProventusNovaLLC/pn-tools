@@ -82,7 +82,10 @@ var GPPipeline = (function () {
       var heat = el("rect", "heat");
       heat.setAttribute("x", 8); heat.setAttribute("y", n.h - 7);
       heat.setAttribute("height", 3); heat.setAttribute("width", 0);
-      g.appendChild(outline); g.appendChild(body); g.appendChild(fac); g.appendChild(iname); g.appendChild(heat);
+      var idle = el("text", "idle-tag");
+      idle.setAttribute("x", n.w - 8); idle.setAttribute("y", 15);
+      idle.textContent = "idle";
+      g.appendChild(outline); g.appendChild(body); g.appendChild(fac); g.appendChild(iname); g.appendChild(heat); g.appendChild(idle);
       g.addEventListener("click", function (ev) { ev.stopPropagation(); GPStore.select(n.id); });
       g.addEventListener("mousemove", function (ev) { nodeTip(ev, n); });
       g.addEventListener("mouseleave", hideTip);
@@ -107,10 +110,24 @@ var GPPipeline = (function () {
     return share > 0.5 ? GPDraw.css("--heat2") : share > 0.2 ? GPDraw.css("--heat1") : GPDraw.css("--heat0");
   }
 
+  /* An element is idle when no link touching it ever carried a buffer in this session
+     (isolated nodes, or a pipeline dormant the whole capture — e.g. a recorder waiting
+     for its trigger). Dimmed + tagged so it reads as "waiting", not "broken". */
+  function idleElements(state) {
+    var links = state.session.series.links, active = {};
+    (state.session.graph.links || []).forEach(function (l) {
+      var fps = links[l.id] && links[l.id].fps;
+      var flows = fps && fps.some(function (v) { return typeof v === "number" && v > 0; });
+      if (flows) { active[String(l.src).split(":")[0]] = 1; active[String(l.sink).split(":")[0]] = 1; }
+    });
+    return active;                                   // any node NOT in here is idle
+  }
+
   function update(state, L) {
     var i = GPStore.cursorIndex();
     var caps = (state.session.target && state.session.target.capabilities) || {};
     var share = caps.element_latency === false ? {} : shareAt(state, i);
+    var active = idleElements(state);
 
     L.nodes.forEach(function (n) {
       var g = nodeEls[n.id], heat = heatEls[n.id];
@@ -118,6 +135,7 @@ var GPPipeline = (function () {
       heat.setAttribute("width", Math.round(s * (n.w - 16)));
       heat.setAttribute("fill", heatColor(s));
       g.classList.toggle("selected", state.selected === n.id);
+      g.classList.toggle("idle", !active[n.id]);
     });
 
     // finding outlines: severity class per target; the focused (or top) finding is primary
