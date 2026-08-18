@@ -140,7 +140,7 @@ test("layout is deterministic for the same graph", () => {
 });
 
 test("node width tracks the longer of factory and instance name, clamped", () => {
-  assert.equal(GPLayout.nodeWidth({ id: "a", factory: "b" }), 120);
-  assert.ok(GPLayout.nodeWidth({ id: "averyveryverylongelementname0", factory: "x" }) > 120);
-  assert.equal(GPLayout.nodeWidth({ id: "x".repeat(80), factory: "" }), 250);
+  assert.equal(GPLayout.nodeWidth({ id: "a", factory: "b" }), 140);
+  assert.ok(GPLayout.nodeWidth({ id: "averyveryverylongelementname0", factory: "x" }) > 140);
+  assert.equal(GPLayout.nodeWidth({ id: "x".repeat(80), factory: "" }), 270);
 });

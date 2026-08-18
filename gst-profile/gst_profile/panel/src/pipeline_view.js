@@ -5,7 +5,7 @@
 var GPPipeline = (function () {
   var NS = "http://www.w3.org/2000/svg";
   var svg, tooltip, layoutCache = { key: "", layout: null };
-  var edgeEls = {}, nodeEls = {}, heatEls = {};
+  var edgeEls = {}, nodeEls = {}, heatEls = {}, procEls = {};
   var dashOffsets = {}, lastFrame = 0, animating = false, showIdle = false;
   var DASH_PERIOD = 12;                    // px per dash cycle ("7 5")
   var SPEED = 0.55;                        // px/s of drift per fps — 30 fps ≈ 16.5 px/s
@@ -82,7 +82,7 @@ var GPPipeline = (function () {
     svg.setAttribute("viewBox", "0 0 " + L.width + " " + L.height);
     svg.setAttribute("width", L.width); svg.setAttribute("height", L.height);
     svg.replaceChildren();
-    edgeEls = {}; nodeEls = {}; heatEls = {};
+    edgeEls = {}; nodeEls = {}; heatEls = {}; procEls = {};
     var gEdges = el("g"), gNodes = el("g");
     svg.appendChild(gEdges); svg.appendChild(gNodes);
 
@@ -115,35 +115,41 @@ var GPPipeline = (function () {
       iname.setAttribute("x", 9); iname.setAttribute("y", 33);
       if ((n.el.factory || "") !== n.id) iname.textContent = n.id;
       var heat = el("rect", "heat");
-      heat.setAttribute("x", 8); heat.setAttribute("y", n.h - 7);
-      heat.setAttribute("height", 3); heat.setAttribute("width", 0);
+      heat.setAttribute("x", 8); heat.setAttribute("y", n.h - 8);
+      heat.setAttribute("height", 4); heat.setAttribute("width", 0);
+      var proc = el("text", "proctime");
+      proc.setAttribute("x", n.w - 9); proc.setAttribute("y", 19);
       var idle = el("text", "idle-tag");
-      idle.setAttribute("x", n.w - 8); idle.setAttribute("y", 15);
+      idle.setAttribute("x", n.w - 9); idle.setAttribute("y", 19);
       idle.textContent = "idle";
-      g.appendChild(outline); g.appendChild(body); g.appendChild(fac); g.appendChild(iname); g.appendChild(heat); g.appendChild(idle);
+      g.appendChild(outline); g.appendChild(body); g.appendChild(fac); g.appendChild(iname); g.appendChild(heat); g.appendChild(proc); g.appendChild(idle);
       g.addEventListener("click", function (ev) { ev.stopPropagation(); GPStore.select(n.id); });
       g.addEventListener("mousemove", function (ev) { nodeTip(ev, n); });
       g.addEventListener("mouseleave", hideTip);
       gNodes.appendChild(g);
-      nodeEls[n.id] = g; heatEls[n.id] = heat;
+      nodeEls[n.id] = g; heatEls[n.id] = heat; procEls[n.id] = proc;
     });
 
     svg.addEventListener("click", function () { GPStore.select(null); });
   }
 
-  function shareAt(state, i) {
-    var els = state.session.series.elements, per = {}, total = 0;
-    Object.keys(els).forEach(function (id) {
-      var v = els[id].proc_ms_p95 && els[id].proc_ms_p95[i];
-      if (typeof v === "number") { per[id] = v; total += v; }
-    });
-    Object.keys(per).forEach(function (id) { per[id] = per[id] / total; });
-    return total > 0 ? per : {};
+  /* Continuous cold→amber→red scale. t in 0..1; the hottest element in the window is 1 (red). */
+  function heatAt(t) {
+    t = Math.max(0, Math.min(1, t));
+    var c0 = GPDraw.css("--heat0"), c1 = GPDraw.css("--heat1"), c2 = GPDraw.css("--heat2");
+    return t < 0.5 ? lerpHex(c0, c1, t * 2) : lerpHex(c1, c2, (t - 0.5) * 2);
   }
-
-  function heatColor(share) {
-    return share > 0.5 ? GPDraw.css("--heat2") : share > 0.2 ? GPDraw.css("--heat1") : GPDraw.css("--heat0");
+  function lerpHex(a, b, t) {
+    var pa = hex(a), pb = hex(b);
+    var m = function (k) { return Math.round(pa[k] + (pb[k] - pa[k]) * t); };
+    return "rgb(" + m(0) + "," + m(1) + "," + m(2) + ")";
   }
+  function hex(c) {
+    c = String(c).replace("#", "");
+    if (c.length === 3) c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
+    return [parseInt(c.slice(0, 2), 16), parseInt(c.slice(2, 4), 16), parseInt(c.slice(4, 6), 16)];
+  }
+  function fmtMs(v) { return (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + " ms"; }
 
   /* An element is idle when no link touching it ever carried a buffer in this session
      (isolated nodes, or a pipeline dormant the whole capture — e.g. a recorder waiting
@@ -161,14 +167,32 @@ var GPPipeline = (function () {
   function update(state, L, active) {
     var i = GPStore.cursorIndex();
     var caps = (state.session.target && state.session.target.capabilities) || {};
-    var share = caps.element_latency === false ? {} : shareAt(state, i);
+    var hasProc = caps.element_latency !== false;
     active = active || idleElements(state);
 
+    // proc time (absolute, ms) + share (fraction of pipeline proc); heat is share
+    // normalized to the hottest element, so the biggest time sink is red and the rest ramp down.
+    var els = state.session.series.elements, procs = {}, total = 0;
+    if (hasProc) L.nodes.forEach(function (n) {
+      var arr = els[n.id] && els[n.id].proc_ms_p95, v = arr && arr[i];
+      if (typeof v === "number") { procs[n.id] = v; total += v; }
+    });
+    var maxShare = 0;
+    if (total > 0) Object.keys(procs).forEach(function (id) { maxShare = Math.max(maxShare, procs[id] / total); });
+
     L.nodes.forEach(function (n) {
-      var g = nodeEls[n.id], heat = heatEls[n.id];
-      var s = share[n.id] || 0;
-      heat.setAttribute("width", Math.round(s * (n.w - 16)));
-      heat.setAttribute("fill", heatColor(s));
+      var g = nodeEls[n.id], heat = heatEls[n.id], proc = procEls[n.id];
+      var v = procs[n.id];
+      if (typeof v === "number" && total > 0) {
+        var share = v / total, col = heatAt(maxShare ? share / maxShare : 0);
+        heat.setAttribute("width", Math.round(share * (n.w - 16)));
+        heat.setAttribute("fill", col);
+        proc.textContent = fmtMs(v);
+        proc.setAttribute("fill", col);
+      } else {
+        heat.setAttribute("width", 0);
+        proc.textContent = "";
+      }
       g.classList.toggle("selected", state.selected === n.id);
       g.classList.toggle("idle", !active[n.id]);
     });

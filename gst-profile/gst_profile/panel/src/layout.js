@@ -11,7 +11,8 @@ var GPLayout = (function () {
 
   function nodeWidth(el) {
     var label = Math.max((el.factory || el.gtype || "").length, (el.id || "").length);
-    return Math.max(120, Math.min(250, Math.round(label * CHAR_W) + 30));
+    // +46 reserves room for the right-aligned proc-time label on the title line.
+    return Math.max(140, Math.min(270, Math.round(label * CHAR_W) + 30 + 46));
   }
 
   function srcEl(l) { return String(l.src || "").split(":")[0]; }
