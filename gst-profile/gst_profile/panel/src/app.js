@@ -54,11 +54,10 @@ var GPApp = (function () {
     es.addEventListener("status", function (e) { GPStore.applyStatus(JSON.parse(e.data)); });
     es.onerror = function () {
       var done = GPStore.state.status.state === "done";
-      if (!done) {
-        GPStore.applyStatus({ state: "disconnected" });
-        es.close(); es = null;
-        setTimeout(function () { connect(false); }, 2000);   // resync from the snapshot, then re-stream
-      }
+      if (done) { if (es) { es.close(); es = null; } return; }
+      GPStore.applyStatus({ state: "disconnected" });
+      es.close(); es = null;
+      setTimeout(function () { connect(false); }, 2000);   // resync from the snapshot, then re-stream
     };
   }
 
@@ -101,6 +100,10 @@ var GPApp = (function () {
     var state = GPStore.state;
     if (state.mode === "report" && window.__SESSION__) {
       download(JSON.stringify(window.__SESSION__));
+      return;
+    }
+    if (state.mode === "replay" && state.session) {
+      download(JSON.stringify(state.session));       // the dropped file is the session being viewed
       return;
     }
     fetch("session.json?redact=1").then(function (r) { return r.text(); }).then(download)
@@ -212,7 +215,7 @@ var GPApp = (function () {
     else if (tgt.platform && tgt.platform !== "generic") bits.push(tgt.platform);
     document.getElementById("targetinfo").textContent = bits.join(" · ");
     var parse = (s && s.session.parse) || {};
-    var bad = (parse.unknown || 0) + (parse.errors || 0);
+    var bad = (parse.unparsed || 0) + (parse.errors || 0);
     document.getElementById("parseinfo").textContent = bad > 0 ? bad + " unparsed lines" : "";
     var liveCapture = st === "capturing";
     document.getElementById("btn-stop").hidden = !liveCapture;

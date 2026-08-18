@@ -72,7 +72,7 @@ var GPAnalysis = (function () {
       GPApp.showTab("pipeline");
     });
     actions.appendChild(show);
-    if (f.ref) {
+    if (f.ref && /^https?:\/\//.test(f.ref)) {
       var a = document.createElement("a");
       a.href = f.ref; a.target = "_blank"; a.rel = "noopener";
       a.textContent = "reference →";
@@ -165,7 +165,7 @@ var GPAnalysis = (function () {
       ? "rules verified on: " + configs.join(", ") + " · "
       : "no rules bench-verified on hardware yet — diagnostics above are heuristic · "));
     var scope = verdict.scope || ((verdict.findings || [])[0] || {}).ref;
-    if (scope) {
+    if (scope && /^https?:\/\//.test(scope)) {
       var a = document.createElement("a");
       a.href = scope; a.target = "_blank"; a.rel = "noopener";
       a.textContent = "need help with this pipeline? scoping call →";

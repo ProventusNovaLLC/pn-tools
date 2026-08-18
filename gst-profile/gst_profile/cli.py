@@ -245,6 +245,8 @@ def _capture(session, cmd, mode, args, caps=None) -> int:
 
         a, fs = _verdict_of(d)
         d["findings"] = verdict.to_dict(a, fs)["findings"]     # session file carries the verdict
+        with lock:
+            session.findings = d["findings"]                       # the live snapshot serves them too
         out = args.out or f"gst-profile-{session.id}.json"
         with open(out, "w") as fh:
             fh.write(json.dumps(d))
@@ -350,9 +352,9 @@ def cmd_analyze(args) -> int:
     except (KeyError, ValueError, TypeError) as e:
         print(f"gst-profile: {args.path} is not a usable session ({e})", file=sys.stderr)
         return EXIT_USAGE
+    a, fs = _verdict_of(d)
+    d["findings"] = verdict.to_dict(a, fs)["findings"]
     if args.out:
-        a, fs = _verdict_of(d)
-        d["findings"] = verdict.to_dict(a, fs)["findings"]
         with open(args.out, "w") as fh:
             fh.write(json.dumps(d))
         print(f"gst-profile: session written to {args.out}", file=sys.stderr)
