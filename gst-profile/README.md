@@ -5,7 +5,7 @@
 `gst-profile` wraps your pipeline (or your own GStreamer app) in GStreamer's
 built-in tracers, aggregates what flows, and tells you where the time and the
 CPU go — per element, per link, with the memory domain of every link
-(NVMEM / dmabuf / sysmem) so zero-copy breaks are visible. Nothing to build,
+(NVMM / dmabuf / sysmem) so zero-copy breaks are visible. Nothing to build,
 nothing to install on the target: Python 3.8+ standard library only.
 
 ```
