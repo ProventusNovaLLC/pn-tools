@@ -47,8 +47,20 @@ class AnalysisTest(unittest.TestCase):
     def test_healthy_software_fixture_builds(self):
         a = analysis.build(load("software-healthy.json"))
         self.assertEqual(a.platform, "generic")
-        self.assertIsNotNone(a.hot_share())
+        # pipeline0 is a bin — real_elements() and hot_share() must exclude it
+        self.assertIn("pipeline0", a.elements)
+        self.assertTrue(a.elements["pipeline0"].is_bin)
+        self.assertNotIn("pipeline0", {e.id for e in a.real_elements()})
+        self.assertNotIn("pipeline0", {eid for eid, _, _ in a.hot_share()})
+        self.assertTrue(a.hot_share())                      # non-empty: real elements have timing
         self.assertIsNotNone(a.frame_period_ms)
+
+    def test_frame_period_falls_back_to_fastest_link_when_source_has_no_fps(self):
+        s = load("jetson-zc-break.json")
+        # drop fps from the source link so the source-cadence path finds nothing -> fallback to fastest link
+        s["series"]["links"]["nvarguscamerasrc0:src->videoconvert0:sink"]["fps"] = [None, None, None, None, None]
+        a = analysis.build(s)
+        self.assertAlmostEqual(a.frame_period_ms, 1000.0 / 30.0, places=1)   # the other link (30 fps) still gives the period
 
 
 if __name__ == "__main__":
