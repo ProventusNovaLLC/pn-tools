@@ -6,7 +6,7 @@ var GPPipeline = (function () {
   var NS = "http://www.w3.org/2000/svg";
   var svg, tooltip, layoutCache = { key: "", layout: null };
   var edgeEls = {}, nodeEls = {}, heatEls = {};
-  var dashOffsets = {}, lastFrame = 0, animating = false;
+  var dashOffsets = {}, lastFrame = 0, animating = false, showIdle = false;
   var DASH_PERIOD = 12;                    // px per dash cycle ("7 5")
   var SPEED = 0.55;                        // px/s of drift per fps — 30 fps ≈ 16.5 px/s
 
@@ -35,11 +35,46 @@ var GPPipeline = (function () {
     var empty = document.getElementById("graphempty");
     var hasNodes = graph && (graph.elements || []).some(function (e) { return !e.is_bin; });
     empty.hidden = !!hasNodes;
-    if (!hasNodes) { svg.replaceChildren(); layoutCache = { key: "", layout: null }; return; }
+    if (!hasNodes) { svg.replaceChildren(); layoutCache = { key: "", layout: null }; renderIdleToggle(0); return; }
 
-    var L = ensureLayout(graph);
-    if (svg.getAttribute("data-key") !== layoutCache.key) rebuild(state, L, graph);
-    update(state, L, graph);
+    // Idle stages (dormant whole capture — see idleElements) are hidden by default so
+    // the graph shows only pipelines that carried data. The toggle reveals them (dimmed).
+    var active = idleElements(state);
+    var idleIds = (graph.elements || []).filter(function (e) { return !e.is_bin && !active[e.id]; }).map(function (e) { return e.id; });
+    var activeCount = (graph.elements || []).filter(function (e) { return !e.is_bin; }).length - idleIds.length;
+    var useGraph = (showIdle || !idleIds.length || activeCount === 0) ? graph : withoutElements(graph, idleIds);
+
+    var L = ensureLayout(useGraph);
+    if (svg.getAttribute("data-key") !== layoutCache.key) rebuild(state, L, useGraph);
+    update(state, L, active);
+    renderIdleToggle(idleIds.length);
+  }
+
+  /* A shallow graph copy with the given elements (and any link touching them) removed. */
+  function withoutElements(graph, hideIds) {
+    var hidden = {};
+    hideIds.forEach(function (id) { hidden[id] = 1; });
+    return {
+      pipeline: graph.pipeline,
+      elements: (graph.elements || []).filter(function (e) { return !hidden[e.id]; }),
+      links: (graph.links || []).filter(function (l) {
+        return !hidden[String(l.src).split(":")[0]] && !hidden[String(l.sink).split(":")[0]];
+      }),
+    };
+  }
+
+  function renderIdleToggle(count) {
+    var host = document.getElementById("idletoggle");
+    if (!host) return;
+    if (!count) { host.hidden = true; return; }
+    host.hidden = false;
+    host.replaceChildren();
+    var lab = document.createElement("span");
+    lab.textContent = count + " idle stage" + (count > 1 ? "s" : "") + (showIdle ? " shown" : " hidden");
+    var btn = document.createElement("button");
+    btn.textContent = showIdle ? "hide" : "show";
+    btn.addEventListener("click", function () { showIdle = !showIdle; render(GPStore.state); });
+    host.appendChild(lab); host.appendChild(btn);
   }
 
   function rebuild(state, L, graph) {
@@ -123,11 +158,11 @@ var GPPipeline = (function () {
     return active;                                   // any node NOT in here is idle
   }
 
-  function update(state, L) {
+  function update(state, L, active) {
     var i = GPStore.cursorIndex();
     var caps = (state.session.target && state.session.target.capabilities) || {};
     var share = caps.element_latency === false ? {} : shareAt(state, i);
-    var active = idleElements(state);
+    active = active || idleElements(state);
 
     L.nodes.forEach(function (n) {
       var g = nodeEls[n.id], heat = heatEls[n.id];
