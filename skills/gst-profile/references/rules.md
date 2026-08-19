@@ -34,6 +34,15 @@ A rule's Python source hard-codes an intended severity (`high`/`medium`/
 can carry `high`/`medium` in the shipped tool today; every other rule you
 see in a session's `findings` array is `info` and `heuristic: true`.
 
+`verified_on` names where the *rule* was bench-verified, not where *this
+capture* ran: a bench-verified rule reports its real `high`/`medium`
+severity wherever it fires, even on hardware other than the one it was
+validated on — e.g. a QUEUE finding from a capture on a generic x86 box
+still ships `severity: "medium"`, `heuristic: false`,
+`verified_on: ["orin-nx-jp6-r36.4"]`, because the QUEUE rule's logic
+(no thread boundary before the encoder/sink) doesn't depend on the
+platform it happens to run against.
+
 Two honest limits, verbatim from `gst-profile/README.md`:
 
 > Two honest limits worth knowing: **SYNC** (`sync=true` on a live sink)
@@ -391,6 +400,18 @@ give it its own queue/thread." No `fix_patch`.
 
 **Verified state:** coded `severity="info"` directly → always `severity:
 "info"`, `heuristic: true`, `verified_on: []`.
+
+**Shared-thread aliasing:** `cpu_pct` is sampled per OS thread (`/proc`),
+not per element (`model.py::ingest_cpu`). GStreamer only spawns a new
+streaming thread at a `queue` (or similar); absent one, `_segment()` walks
+downstream from the thread-owning element and attributes that *one*
+thread's `cpu_pct` to every element in the segment, so
+`series.elements.*.cpu_pct` is identical across all of them by
+construction — this isn't a sampling coincidence. If that shared value is
+`>= 90`, CPU fires once per element in the segment, which reads like
+several bottlenecks but is really one signal: that shared thread is
+saturated. Treat a run of identical `cpu_pct` across adjacent, queue-less
+elements as one finding, not N.
 
 ---
 

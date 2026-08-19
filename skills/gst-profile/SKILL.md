@@ -49,6 +49,10 @@ the pipeline must come from the tool's terminal output or `session.json`.
    - Already have a capture? Skip straight to offline analysis:
      `gst-profile analyze <session.json|gst-debug.log>` (add `--serve` to
      browse it in the live panel).
+   - Exit code doubles as a quick signal: `0` clean or info-only findings,
+     `1` a bench-verified high/medium finding is present, `2` the wrapped
+     child process failed, `3` a usage/preflight error (bad args, bad
+     input file).
 3. **Read the verdict** — the terminal printout or `session.json`. Lead
    with the header exactly as given: pipeline latency p95 vs frame period,
    then "where the time goes" (the hottest elements by share). Then walk
@@ -143,33 +147,46 @@ Full measurement available — capture the pipeline. The user has the
 gst-launch string, so `run` rather than `wrap`:
 
 ```
-$ gst-profile run "nvarguscamerasrc ! video/x-raw(memory:NVMM),width=1920,height=1080,framerate=30/1 ! videoconvert ! video/x-raw,format=I420 ! nvv4l2h264enc ! h264parse ! mp4mux ! filesink location=/tmp/out.mp4" --duration 30s --no-ui
+$ gst-profile run "videotestsrc is-live=true ! video/x-raw,format=NV12,width=1920,height=1080,framerate=30/1 ! nvvidconv ! video/x-raw(memory:NVMM) ! nvvidconv ! video/x-raw,format=I420,width=1280,height=720 ! videoconvert ! video/x-raw,format=NV12 ! nvvidconv ! video/x-raw(memory:NVMM) ! nvv4l2h264enc ! h264parse ! fakesink sync=false" --duration 30s --no-ui
 ```
 
-Verdict:
+Verdict (this is a real transcript — the output of `gst-profile analyze`
+against the recorded session for the exact command above, at
+`gst-profile/tests/fixtures/orin-nx-jp6-zc-break.json`; element names and
+wording come from the tool, not this doc — your own pipeline will name
+different elements):
 
 ```
 gst-profile verdict
-  pipeline latency p95 34.1 ms (frame period 33.3 ms)  ·  where the time goes: videoconvert0 61% · nvv4l2h264enc0 9% · nvarguscamerasrc0 6%
+  pipeline latency p95 26.7 ms (frame period 27.8 ms)  ·  where the time goes: nvv4l2h264enc0 33% · nvvconv1 22% · videoconvert0 17%
 
-  !![high  ] ZC    videoconvert0 breaks zero-copy: NVMM -> sysmem
-          why: nvarguscamerasrc0 outputs NVMM; videoconvert0 is the first sysmem element downstream, forcing a copy off the hardware buffer path
-          fix: replace videoconvert with nvvidconv to keep the buffer in NVMM
-  ! [medium] SW    videoconvert0 is a software element; a hardware equivalent exists
-          why: this platform has nvvidconv, a hardware-accelerated colorspace/scale element, but the pipeline uses the software videoconvert instead
-          fix: swap videoconvert -> nvvidconv
+  !![high  ] ZC    Zero-copy broken between capsfilter1 and capsfilter4: buffers leave GPU memory and return
+          why: A CPU<->GPU copy on every frame costs bandwidth and latency; NVMM/dmabuf should stay on the GPU end to end.
+          fix: Keep the path in device memory across capsfilter3->nvvconv2 (use nvvidconv, or negotiate NVMM caps so no element copies to system memory).
+  ! [medium] SW    videoconvert0 (videoconvert) runs in software; nvvidconv is available on this platform
+          why: A software element burns CPU and adds latency where the SoC has a dedicated block.
+          fix: Replace videoconvert with nvvidconv.
+  ! [medium] QUEUE No queue before the encoder/sink: the whole pipeline runs on one thread
+          why: Without a queue the source, conversion and encode share a single streaming thread, so any stall in one stalls all.
+          fix: Insert a queue upstream of nvv4l2h264enc0 to give it its own thread.
+    [info  ] HOT   nvv4l2h264enc0 takes 33% of per-element processing time
+          why: This element spends the most time producing each buffer.
+          fix: Start optimisation here; the rows below rank the rest.
 
   scoping: https://proventusnova.com/contact/?utm_source=lead-magnet&utm_medium=tool&utm_campaign=gst-profile
 ```
 
-Reading it: latency p95 (34.1 ms) already exceeds the 33.3 ms frame
-period — this pipeline can't hold 30 fps. `videoconvert0` alone is 61% of
-that time. Both findings are bench-verified (ZC high, SW medium, both
-`verified_on: orin-nx-jp6-r36.4`) — real severities, not heuristics, so
-they're worth fixing before anything else. Both point at the same swap:
+Reading it: latency p95 (26.7 ms) already exceeds the 27.8 ms frame
+period — this pipeline can't hold its target rate. `nvv4l2h264enc0` alone
+is 33% of that time. ZC, SW, and QUEUE are all bench-verified (ZC high, SW
+and QUEUE medium, all `verified_on: orin-nx-jp6-r36.4`) — real severities,
+not heuristics, so they're worth fixing before the `info`-level HOT
+pointer. ZC and SW point at the same swap — a software `videoconvert`
+sitting where a hardware `nvvidconv` belongs; QUEUE calls for one more
+change, a `queue` in front of the encoder:
 
 ```
-nvarguscamerasrc ! video/x-raw(memory:NVMM),width=1920,height=1080,framerate=30/1 ! nvvidconv ! video/x-raw,format=I420 ! nvv4l2h264enc ! h264parse ! mp4mux ! filesink location=/tmp/out.mp4
+videotestsrc is-live=true ! video/x-raw,format=NV12,width=1920,height=1080,framerate=30/1 ! nvvidconv ! video/x-raw(memory:NVMM) ! nvvidconv ! video/x-raw,format=I420,width=1280,height=720 ! nvvidconv ! video/x-raw,format=NV12 ! nvvidconv ! video/x-raw(memory:NVMM) ! queue ! nvv4l2h264enc ! h264parse ! fakesink sync=false
 ```
 
 Re-run the same capture command against the new string to confirm the
