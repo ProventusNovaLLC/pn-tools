@@ -6,7 +6,7 @@ MediaTek Genio. MIT-licensed, offline, no telemetry.
 
 ## Skills
 
-Bench debugging methods as [Agent Skills](skills/) — your AI assistant
+Bench debugging methods as [Agent Skills](skills/): your AI assistant
 runs the decision tree, you paste command output. Install as a Claude
 Code plugin:
 
@@ -25,7 +25,7 @@ Code plugin:
 Standalone CLIs the skills above drive, usable on their own too.
 
 **[`gst-profile`](gst-profile/)** profiles a GStreamer pipeline (live or
-recorded) and shows where the time and CPU actually go, per element —
+recorded) and shows where the time and CPU actually go, per element,
 flagging zero-copy breaks (NVMM → sysmem), software elements where a
 hardware one exists, and missing queues. Python 3.8+ standard library
 only: nothing to build, nothing to install on the target. See its
@@ -39,4 +39,4 @@ gst-profile wrap --duration 30s -- ./my-app --args    # profile your own binary
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
