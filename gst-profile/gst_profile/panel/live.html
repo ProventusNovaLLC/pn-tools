@@ -1,0 +1,1884 @@
+<!doctype html>
+<!-- built by tools/build_panel.py - edit gst_profile/panel/src/, not this file -->
+
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gst-profile</title>
+<style>
+/* gst-profile panel. Instrument chrome: quiet surfaces, monospace data, one saturated
+   identity — vendor green on the hardware path. Colors are semantic tokens; the
+   memory-domain set (#76B900 / #8f6af2 / #8b93a1) is CVD-validated on both surfaces. */
+:root {
+  --bg: #0e1116; --surface: #161b22; --surface2: #1c232d; --border: #262d38;
+  --ink: #e6e9ee; --ink2: #9aa4b2; --ink3: #5c6773;
+  --nvidia: #76B900; --mediatek: #f5a623; --generic: #4a5261;
+  --nvmm: #76B900; --dmabuf: #8f6af2; --sysmem: #8b93a1; --unknown: #5c6773;
+  --high: #ff5c5c; --medium: #ffb454; --info: #58a6ff;
+  --heat0: #3a4250; --heat1: #ffb454; --heat2: #ff5c5c;
+  --focus: #58a6ff;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f6f8fa; --surface: #ffffff; --surface2: #eef1f5; --border: #d7dde5;
+    --ink: #1a2129; --ink2: #55606e; --ink3: #8a94a1;
+    --nvidia: #538300; --generic: #97a1ad;
+    --nvmm: #538300; --dmabuf: #6d4fd4; --sysmem: #6e7887; --unknown: #98a1ad;
+    --high: #d63a3a; --medium: #b07500; --info: #0969da;
+    --heat0: #d7dde5; --heat1: #b07500; --heat2: #d63a3a;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.mono { font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace; }
+.dim { color: var(--ink2); }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+button:focus-visible, .tab:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+/* ---- status strip ---- */
+#strip {
+  display: flex; align-items: center; gap: 14px; padding: 8px 14px;
+  border-bottom: 1px solid var(--border); flex: none; white-space: nowrap;
+}
+.brand { font-weight: 650; letter-spacing: .01em; }
+.stat { display: inline-flex; align-items: center; gap: 7px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--nvidia); }
+.dot.capturing { animation: breathe 2s ease-in-out infinite; }
+.dot.done { background: var(--ink3); animation: none; }
+.dot.err { background: var(--high); animation: none; }
+@keyframes breathe { 50% { opacity: .35; } }
+#strip .spacer { flex: 1; }
+.ctl {
+  border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; color: var(--ink2);
+}
+.ctl:hover { color: var(--ink); border-color: var(--ink3); }
+#btn-stop { color: var(--high); border-color: color-mix(in srgb, var(--high) 40%, var(--border)); }
+
+/* ---- verdict line ---- */
+#verdictline {
+  padding: 7px 14px; font-size: 12.5px; color: var(--ink2);
+  border-bottom: 1px solid var(--border); flex: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#verdictline b { color: var(--ink); font-weight: 600; }
+
+/* ---- tabs ---- */
+#tabs { display: flex; gap: 2px; padding: 0 10px; border-bottom: 1px solid var(--border); flex: none; }
+.tab {
+  padding: 7px 12px 6px; color: var(--ink2); border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.tab:hover { color: var(--ink); }
+.tab.active { color: var(--ink); border-bottom-color: var(--nvidia); }
+.tab .badge { color: var(--high); font-weight: 700; }
+
+/* ---- views ---- */
+main { flex: 1; min-height: 0; display: flex; }
+.view { display: none; flex: 1; min-width: 0; min-height: 0; }
+.view.active { display: flex; }
+
+/* pipeline */
+#view-pipeline { position: relative; }
+#graphwrap { flex: 1; min-width: 0; overflow: auto; position: relative; }
+#graph { display: block; margin: 22px auto; }
+.empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--ink3); }
+.empty[hidden] { display: none; }
+.idletoggle { position: absolute; right: 14px; bottom: 12px; display: flex; gap: 8px; align-items: center;
+  font-size: 11.5px; color: var(--ink3); background: color-mix(in srgb, var(--surface) 82%, transparent);
+  border: 1px solid var(--border); border-radius: 14px; padding: 3px 6px 3px 11px; }
+.idletoggle[hidden] { display: none; }
+.idletoggle button { border: 1px solid var(--border); border-radius: 11px; padding: 1px 9px; color: var(--ink2); font-size: 11px; }
+.idletoggle button:hover { color: var(--ink); border-color: var(--ink3); }
+.node rect.body { fill: var(--surface); stroke: var(--generic); stroke-width: 1.2; rx: 7; }
+.node.v-nvidia rect.body { stroke: var(--nvidia); fill: color-mix(in srgb, var(--nvidia) 9%, var(--surface)); }
+.node.v-mediatek rect.body { stroke: var(--mediatek); fill: color-mix(in srgb, var(--mediatek) 9%, var(--surface)); }
+.node text { fill: var(--ink); font: 12px ui-monospace, Menlo, Consolas, monospace; }
+.node text.iname { fill: var(--ink2); font-size: 10.5px; }
+.node text.proctime { font: 600 10.5px ui-monospace, Menlo, Consolas, monospace; text-anchor: end; }
+.node { cursor: pointer; }
+.node:hover rect.body { stroke-width: 2; }
+.node.selected rect.body { stroke-width: 2.4; }
+.node rect.heat { rx: 1.5; }
+.node.idle { opacity: .42; }
+.node.idle:hover { opacity: .72; }
+.node .idle-tag { display: none; fill: var(--ink3); font: 9px ui-monospace, Menlo, Consolas, monospace; text-anchor: end; text-transform: uppercase; letter-spacing: .06em; }
+.node.idle .idle-tag { display: block; }
+.node rect.outline { fill: none; rx: 9; stroke-width: 1.6; stroke-dasharray: 4 3; pointer-events: none; }
+.node.f-high rect.outline { stroke: var(--high); }
+.node.f-medium rect.outline { stroke: var(--medium); }
+.node.f-info rect.outline { stroke: var(--info); }
+.node.f-primary rect.outline { stroke-dasharray: none; stroke-width: 2.2; }
+.edge { fill: none; stroke-linecap: round; }
+.edge.m-nvmm { stroke: var(--nvmm); }
+.edge.m-dmabuf { stroke: var(--dmabuf); }
+.edge.m-sysmem { stroke: var(--sysmem); }
+.edge.m-unknown { stroke: var(--unknown); }
+.edge.stalled { stroke: var(--high) !important; animation: stallpulse 1s ease-in-out infinite; }
+@keyframes stallpulse { 50% { stroke-opacity: .25; } }
+.edgehit { fill: none; stroke: transparent; stroke-width: 14; cursor: pointer; }
+.edge.f-high { filter: drop-shadow(0 0 3px var(--high)); }
+.edge.f-medium { filter: drop-shadow(0 0 3px var(--medium)); }
+.edge.f-info { filter: drop-shadow(0 0 3px var(--info)); }
+
+/* inspector */
+#inspector {
+  width: 300px; flex: none; border-left: 1px solid var(--border); overflow-y: auto;
+  padding: 12px 14px; background: var(--surface);
+}
+#inspector h2 { margin: 0; font-size: 13px; }
+#inspector h2 .fac { font-weight: 650; }
+#inspector .vtag { font-size: 10.5px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--ink2); margin-left: 6px; vertical-align: 1px; }
+#inspector .vtag.v-nvidia { color: var(--nvidia); border-color: var(--nvidia); }
+#inspector .vtag.v-mediatek { color: var(--mediatek); border-color: var(--mediatek); }
+#inspector .sec { margin-top: 12px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink3); }
+#inspector table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+#inspector td { padding: 2px 0; font-size: 12px; vertical-align: top; }
+#inspector td.k { color: var(--ink2); padding-right: 10px; white-space: nowrap; }
+#inspector td.v { word-break: break-all; }
+.spark { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+.spark canvas { flex: none; background: var(--surface2); border-radius: 3px; }
+.spark .lab { flex: 1; font-size: 11.5px; color: var(--ink2); }
+.spark .val { font-size: 11.5px; }
+#inspector .fchip { display: block; width: 100%; text-align: left; margin: 4px 0 0; padding: 4px 8px; border-radius: 5px; font-size: 11.5px; border: 1px solid var(--border); cursor: pointer; }
+#inspector .fchip.high { border-color: var(--high); color: var(--high); }
+#inspector .fchip.medium { border-color: var(--medium); color: var(--medium); }
+#inspector .fchip.info { border-color: var(--info); color: var(--info); }
+#inspector .close { float: right; color: var(--ink3); font-size: 15px; padding: 0 4px; }
+
+/* timeline / system */
+#view-timeline, #view-system { flex-direction: column; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px 0; flex: none; }
+.chips button { border: 1px solid var(--border); border-radius: 12px; padding: 1px 10px; font-size: 11.5px; color: var(--ink2); font-family: ui-monospace, Menlo, Consolas, monospace; }
+.chips button.on { color: var(--ink); border-color: var(--ink3); background: var(--surface2); }
+.canvaswrap { flex: 1; min-height: 0; position: relative; }
+.canvaswrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* analysis */
+#view-analysis { flex-direction: column; overflow-y: auto; display: none; }
+#view-analysis.active { display: block; }
+#findings { padding: 12px 14px; max-width: 880px; }
+.finding { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--info); border-radius: 6px; margin-bottom: 9px; }
+.finding.high { border-left-color: var(--high); }
+.finding.medium { border-left-color: var(--medium); }
+.finding > .head { display: flex; align-items: baseline; gap: 10px; padding: 9px 12px; cursor: pointer; }
+.finding .sev { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--ink2); min-width: 52px; }
+.finding.high .sev { color: var(--high); } .finding.medium .sev { color: var(--medium); }
+.finding .rule { font-size: 11px; color: var(--ink3); min-width: 44px; }
+.finding .title { flex: 1; font-weight: 550; }
+.finding .share { color: var(--ink2); font-size: 12px; }
+.finding .heur { font-size: 10.5px; color: var(--ink3); font-style: italic; }
+.finding .body { display: none; padding: 2px 12px 11px 12px; border-top: 1px solid var(--border); }
+.finding.open .body { display: block; }
+.finding .body h4 { margin: 10px 0 3px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink3); }
+.finding .body p { margin: 3px 0; color: var(--ink2); }
+.finding .ev td { padding: 1px 0; font-size: 12px; }
+.finding .ev td.k { color: var(--ink2); padding-right: 12px; }
+.finding .patch { background: var(--surface2); border-radius: 5px; padding: 7px 9px; font-size: 12px; margin-top: 4px; overflow-x: auto; white-space: pre-wrap; }
+.finding .patch del { color: var(--high); text-decoration: line-through; background: none; }
+.finding .patch ins { color: var(--nvidia); text-decoration: none; font-weight: 600; }
+.finding .actions { margin-top: 9px; display: flex; gap: 12px; align-items: center; }
+.finding .actions a { color: var(--info); text-decoration: none; font-size: 12px; }
+.finding .actions a:hover { text-decoration: underline; }
+.finding .actions button { color: var(--info); font-size: 12px; padding: 0; }
+#an-footer { padding: 4px 14px 16px; font-size: 12px; }
+#an-footer a { color: var(--info); }
+
+/* legend + scrubber */
+#legend { padding: 4px 14px; font-size: 11.5px; flex: none; border-top: 1px solid var(--border); }
+#legend .sw { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: 3px; margin: 0 4px 0 10px; }
+#scrub { display: flex; align-items: center; gap: 10px; padding: 6px 14px 9px; border-top: 1px solid var(--border); flex: none; }
+.live-pin { font-size: 10.5px; letter-spacing: .08em; padding: 2px 8px; }
+.live-pin.on { color: var(--nvidia); border-color: var(--nvidia); }
+#scrubwrap { flex: 1; height: 30px; position: relative; }
+#scrubcanvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+#scrubtime { min-width: 88px; text-align: right; font-size: 11.5px; }
+
+/* tooltip */
+#tooltip {
+  position: fixed; z-index: 10; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; padding: 7px 10px; font-size: 11.5px; max-width: 380px; pointer-events: none;
+  box-shadow: 0 4px 14px rgba(0,0,0,.35); color: var(--ink2);
+}
+#tooltip b { color: var(--ink); }
+#tooltip .mono { word-break: break-all; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dot.capturing, .edge.stalled { animation: none; }
+}
+</style>
+</head>
+<body>
+<header id="strip">
+  <span class="brand">gst-profile</span>
+  <span class="stat"><span class="dot" id="statusdot"></span><span id="statustext">connecting…</span><span id="elapsed" class="mono"></span></span>
+  <span id="targetinfo" class="dim"></span>
+  <span id="parseinfo" class="dim"></span>
+  <span class="spacer"></span>
+  <button id="btn-stop" class="ctl" hidden>Stop capture</button>
+  <button id="btn-mark" class="ctl" hidden>Mark</button>
+  <button id="btn-save" class="ctl">Save session</button>
+</header>
+<div id="verdictline" class="mono">waiting for the first window…</div>
+<nav id="tabs">
+  <button class="tab active" data-tab="pipeline">Pipeline</button>
+  <button class="tab" data-tab="timeline">Timeline</button>
+  <button class="tab" data-tab="system">System</button>
+  <button class="tab" data-tab="analysis">Analysis</button>
+</nav>
+<main>
+  <section id="view-pipeline" class="view active">
+    <div id="graphwrap"><svg id="graph" role="img" aria-label="pipeline graph"></svg>
+      <div id="graphempty" class="empty" hidden>waiting for the pipeline topology…</div>
+      <div id="idletoggle" class="idletoggle" hidden></div>
+    </div>
+    <aside id="inspector" hidden></aside>
+  </section>
+  <section id="view-timeline" class="view">
+    <div id="tl-toggles" class="chips"></div>
+    <div class="canvaswrap"><canvas id="tl"></canvas></div>
+  </section>
+  <section id="view-system" class="view">
+    <div class="canvaswrap"><canvas id="sys"></canvas></div>
+  </section>
+  <section id="view-analysis" class="view">
+    <div id="findings"></div>
+    <footer id="an-footer" class="dim"></footer>
+  </section>
+</main>
+<div id="legend" class="dim"></div>
+<footer id="scrub">
+  <button id="btn-live" class="ctl live-pin" title="follow the newest window">LIVE</button>
+  <div id="scrubwrap"><canvas id="scrubcanvas"></canvas></div>
+  <span id="scrubtime" class="mono dim"></span>
+</footer>
+<div id="tooltip" hidden></div>
+<script>
+/* Session store: one client-side copy of the gst-profile/1 session document, built
+   from an embedded session (report), a fetched snapshot (live/replay) and SSE frames.
+   Pure data — no DOM. Views subscribe and re-read on notify. */
+var GPStore = (function () {
+  var ELEMENT_COLS = ["proc_ms_p50", "proc_ms_p95", "cpu_pct", "queue_level", "buffers"];
+  var LINK_COLS = ["fps", "bytes_s", "stalled"];
+  var PIPELINE_COLS = ["latency_ms_p50", "latency_ms_p95", "reported_latency_ms"];
+  var SYSTEM_COLS = ["cpu_pct_per_core", "cpu_pct", "gr3d_pct", "vic_pct", "nvenc_pct", "nvdec_pct", "emc_pct"];
+
+  var state = {
+    session: null,          // the session dict (schema gst-profile/1)
+    verdict: null,          // latest findings frame (verdict.to_dict shape)
+    status: { state: "connecting" },
+    cursor: { index: -1, live: true },   // index into series.t; live pins to the newest window
+    mode: "live",           // live | replay | report
+    selected: null,         // selected element id (inspector)
+    focusFinding: null      // finding id highlighted on the pipeline tab
+  };
+  var listeners = [];
+
+  function emptySeries() {
+    return { window_ms: 250, t: [], elements: {}, links: {},
+             pipeline: { latency_ms_p50: [], latency_ms_p95: [], reported_latency_ms: [] },
+             system: { cpu_pct_per_core: [], cpu_pct: [], gr3d_pct: [], vic_pct: [], nvenc_pct: [], nvdec_pct: [], emc_pct: [] } };
+  }
+
+  function normalize(session) {
+    session = session || {};
+    if (!session.series || !session.series.t) session.series = emptySeries();
+    var s = session.series;
+    s.elements = s.elements || {}; s.links = s.links || {};
+    s.pipeline = s.pipeline || {}; s.system = s.system || {};
+    PIPELINE_COLS.forEach(function (c) { s.pipeline[c] = s.pipeline[c] || []; });
+    SYSTEM_COLS.forEach(function (c) { s.system[c] = s.system[c] || []; });
+    if (!session.graph) session.graph = { pipeline: "", elements: [], links: [] };
+    session.events = session.events || [];
+    session.findings = session.findings || [];
+    session.target = session.target || {};
+    session.session = session.session || {};
+    return session;
+  }
+
+  function rows() { return state.session ? state.session.series.t.length : 0; }
+
+  function cursorIndex() {
+    var n = rows();
+    if (!n) return -1;
+    if (state.cursor.live || state.cursor.index < 0) return n - 1;
+    return Math.min(state.cursor.index, n - 1);
+  }
+
+  /* Backfill a per-key column set to `upto` values, so a key that appears
+     mid-capture gets nulls for the windows before it existed. */
+  function pad(colsObj, colNames, upto) {
+    colNames.forEach(function (c) {
+      colsObj[c] = colsObj[c] || [];
+      while (colsObj[c].length < upto) colsObj[c].push(null);
+    });
+  }
+
+  function initSession(sessionDict, mode) {
+    state.session = normalize(sessionDict);
+    if (mode) state.mode = mode;
+    if (state.session.findings.length && !state.verdict) state.verdict = deriveVerdict(state.session);
+    notify();
+  }
+
+  function applyGraph(graphDict) {
+    if (!state.session) state.session = normalize({});
+    state.session.graph = graphDict;
+    notify();
+  }
+
+  /* tick = {t, rows, row:{elements:{}, links:{}, pipeline:{}, system:{}}} — append one window.
+     Frames older than what we already hold (reconnect replays) are dropped. */
+  function applyTick(tick) {
+    if (!state.session) state.session = normalize({});
+    var s = state.session.series, t = s.t;
+    if (typeof tick.t !== "number" || !tick.row) return false;
+    if (t.length && tick.t <= t[t.length - 1]) return false;
+    var n = t.length;
+    t.push(tick.t);
+    var rowEls = tick.row.elements || {};
+    Object.keys(rowEls).forEach(function (el) {
+      s.elements[el] = s.elements[el] || {};
+      pad(s.elements[el], ELEMENT_COLS, n);
+    });
+    Object.keys(s.elements).forEach(function (el) {
+      var src = rowEls[el] || {};
+      ELEMENT_COLS.forEach(function (c) { s.elements[el][c].push(src[c] !== undefined ? src[c] : null); });
+    });
+    var rowLinks = tick.row.links || {};
+    Object.keys(rowLinks).forEach(function (l) {
+      s.links[l] = s.links[l] || {};
+      pad(s.links[l], LINK_COLS, n);
+    });
+    Object.keys(s.links).forEach(function (l) {
+      var src = rowLinks[l] || {};
+      LINK_COLS.forEach(function (c) { s.links[l][c].push(src[c] !== undefined ? src[c] : null); });
+    });
+    var rp = tick.row.pipeline || {};
+    PIPELINE_COLS.forEach(function (c) { s.pipeline[c].push(rp[c] !== undefined ? rp[c] : null); });
+    var rs = tick.row.system || {};
+    SYSTEM_COLS.forEach(function (c) { s.system[c].push(rs[c] !== undefined ? rs[c] : null); });
+    notify();
+    return true;
+  }
+
+  function applyFindings(payload) { state.verdict = payload; notify(); }
+
+  function applyEvent(ev) {
+    if (!state.session) state.session = normalize({});
+    state.session.events.push(ev);
+    notify();
+  }
+
+  function applyStatus(st) { state.status = st || state.status; notify(); }
+
+  /* Replace the whole session from a fresh /session.json (SSE reconnect). */
+  function resync(sessionDict) {
+    var live = state.cursor.live, idx = state.cursor.index;
+    state.session = normalize(sessionDict);
+    state.cursor = { index: Math.min(idx, rows() - 1), live: live };
+    notify();
+  }
+
+  function setCursor(index, live) {
+    state.cursor = { index: index, live: !!live };
+    notify();
+  }
+  function select(elementId) { state.selected = elementId; notify(); }
+  function focusFinding(id) { state.focusFinding = id; notify(); }
+
+  /* A dropped session file has findings but no verdict frame: rebuild the header
+     and hot list from the series (mirror of the Python verdict, good enough for replay). */
+  function deriveVerdict(session) {
+    var s = session.series, findings = session.findings || [];
+    var p95 = numeric(s.pipeline.latency_ms_p95), lat = p95.length ? percentile(p95, 0.95) : null;
+    var per = {}, total = 0;
+    Object.keys(s.elements).forEach(function (el) {
+      var v = numeric(s.elements[el].proc_ms_p95);
+      if (!v.length) return;
+      var m = v.reduce(function (a, b) { return a + b; }, 0) / v.length;
+      per[el] = m; total += m;
+    });
+    var hot = Object.keys(per).map(function (el) {
+      return { element: el, proc_ms_p95: per[el], share_pct: total ? 100 * per[el] / total : 0 };
+    }).sort(function (a, b) { return b.share_pct - a.share_pct; }).slice(0, 8);
+    var head = [];
+    if (lat !== null) head.push("pipeline latency p95 " + lat.toFixed(1) + " ms");
+    if (hot.length) head.push("where the time goes: " + hot.slice(0, 3).map(function (h) {
+      return h.element + " " + h.share_pct.toFixed(0) + "%"; }).join(" · "));
+    return { header: head.join("  ·  ") || "no per-element timing on this capture",
+             latency_ms_p95: lat, frame_period_ms: null, hot: hot, findings: findings,
+             has_high_or_medium: findings.some(function (f) { return f.severity === "high" || f.severity === "medium"; }) };
+  }
+
+  function numeric(arr) { return (arr || []).filter(function (v) { return typeof v === "number"; }); }
+  function percentile(vals, p) {
+    var v = vals.slice().sort(function (a, b) { return a - b; });
+    return v[Math.max(0, Math.min(v.length - 1, Math.round(p * (v.length - 1))))];
+  }
+
+  function subscribe(fn) { listeners.push(fn); }
+  var scheduled = false;
+  function notify() {
+    if (scheduled) return;
+    scheduled = true;
+    var flush = function () { scheduled = false; listeners.forEach(function (fn) { fn(state); }); };
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(flush); else flush();
+  }
+
+  return { state: state, initSession: initSession, applyGraph: applyGraph, applyTick: applyTick,
+           applyFindings: applyFindings, applyEvent: applyEvent, applyStatus: applyStatus,
+           resync: resync, setCursor: setCursor, cursorIndex: cursorIndex, select: select,
+           focusFinding: focusFinding, deriveVerdict: deriveVerdict, rows: rows,
+           numeric: numeric, percentile: percentile, subscribe: subscribe };
+})();
+if (typeof module !== "undefined") module.exports = GPStore;
+/* Layered left-to-right graph layout for pipeline graphs (Sugiyama-lite).
+   The graph may hold several disconnected pipelines (e.g. an app that runs many
+   gst_parse_launch pipelines bridged by interpipe/appsink — invisible to pad
+   topology). Each weakly-connected component is laid out on its own: longest-path
+   layering, barycenter ordering, then neighbour-barycenter vertical positioning so
+   a node sits centered on the elements it actually connects to. Components are then
+   stacked vertically, each below the previous one. Columns (x) are shared across all
+   components so every source lines up on the left. Pure function of the graph — no DOM. */
+var GPLayout = (function () {
+  var NODE_H = 46, H_GAP = 64, V_GAP = 20, COMPONENT_GAP = 44, CHAR_W = 7.4;
+
+  function nodeWidth(el) {
+    var label = Math.max((el.factory || el.gtype || "").length, (el.id || "").length);
+    // +46 reserves room for the right-aligned proc-time label on the title line.
+    return Math.max(140, Math.min(270, Math.round(label * CHAR_W) + 30 + 46));
+  }
+
+  function srcEl(l) { return String(l.src || "").split(":")[0]; }
+  function sinkEl(l) { return String(l.sink || "").split(":")[0]; }
+
+  /* graph: {elements:[{id, is_bin, ...}], links:[{id, src:"el:pad", sink:"el:pad"}]} */
+  function layout(graph) {
+    var els = (graph.elements || []).filter(function (e) { return !e.is_bin; });
+    var byId = {};
+    els.forEach(function (e) { byId[e.id] = e; });
+    var links = (graph.links || []).filter(function (l) {
+      return byId[srcEl(l)] && byId[sinkEl(l)];
+    });
+
+    // directed adjacency (for layering) — self-loops ignored
+    var out = {}, inn = {};
+    els.forEach(function (e) { out[e.id] = []; inn[e.id] = []; });
+    links.forEach(function (l) {
+      var a = srcEl(l), b = sinkEl(l);
+      if (a === b) return;
+      if (out[a].indexOf(b) < 0) out[a].push(b);
+      if (inn[b].indexOf(a) < 0) inn[b].push(a);
+    });
+
+    // ---- weakly-connected components (union-find over undirected edges) ----
+    var parent = {};
+    els.forEach(function (e) { parent[e.id] = e.id; });
+    function find(x) { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+    links.forEach(function (l) {
+      var a = find(srcEl(l)), b = find(sinkEl(l));
+      if (a !== b) parent[a] = b;
+    });
+    var byRoot = {};
+    els.forEach(function (e) { var r = find(e.id); (byRoot[r] = byRoot[r] || []).push(e.id); });
+    var components = Object.keys(byRoot).map(function (r) { return byRoot[r]; });
+
+    // ---- longest-path layering from sources (cycle-guarded; components disjoint) ----
+    var layer = {}, onStack = {};
+    function rank(id) {
+      if (layer[id] !== undefined) return layer[id];
+      if (onStack[id]) return 0;
+      onStack[id] = true;
+      var r = 0;
+      inn[id].forEach(function (up) { r = Math.max(r, rank(up) + 1); });
+      onStack[id] = false;
+      layer[id] = r;
+      return r;
+    }
+    els.forEach(function (e) { rank(e.id); });
+
+    // ---- shared global columns: x per layer index, widest node in that layer ----
+    var maxLayer = 0;
+    els.forEach(function (e) { maxLayer = Math.max(maxLayer, layer[e.id]); });
+    var layerW = [];
+    for (var i = 0; i <= maxLayer; i++) layerW[i] = 0;
+    els.forEach(function (e) { layerW[layer[e.id]] = Math.max(layerW[layer[e.id]], nodeWidth(e)); });
+    var layerX = [], xacc = 0;
+    for (i = 0; i <= maxLayer; i++) { layerX[i] = xacc; xacc += layerW[i] + H_GAP; }
+    var totalWidth = Math.max(NODE_H, xacc - H_GAP);
+
+    // ---- lay out each component, stack vertically ----
+    // Order top→bottom by role, so producers sit above the stages they feed:
+    //   tier 0 = capture pipelines (contain a real hardware/live source),
+    //   tier 1 = derived pipelines (fed only by an in-process bridge: interpipe/app/proxy),
+    //   tier 2 = single-node / unlinked components (idle stages) — sink to the bottom.
+    // Within a tier, order by the smallest source id so per-camera order stays stable.
+    function isBridgeSrc(f) { return /^(interpipesrc|appsrc|proxysrc)/.test(String(f || "").toLowerCase()); }
+    function compKey(comp) {
+      var sources = comp.filter(function (id) { return inn[id].length === 0; });
+      var srcIds = (sources.length ? sources : comp).slice().sort();
+      var tier = comp.length <= 1 ? 2
+        : srcIds.some(function (id) { return !isBridgeSrc(byId[id].factory || byId[id].gtype); }) ? 0 : 1;
+      return { tier: tier, src: srcIds[0] };
+    }
+    components = components.map(function (comp) { return { comp: comp, key: compKey(comp) }; })
+      .sort(function (a, b) {
+        if (a.key.tier !== b.key.tier) return a.key.tier - b.key.tier;
+        return a.key.src < b.key.src ? -1 : a.key.src > b.key.src ? 1 : 0;
+      })
+      .map(function (k) { return k.comp; });
+
+    var nodes = {}, nodeList = [];
+    var yCursor = 0;
+
+    components.forEach(function (comp) {
+      var compLayers = [];
+      comp.slice().sort().forEach(function (id) {          // stable seed order
+        var L = layer[id];
+        (compLayers[L] = compLayers[L] || []).push(id);
+      });
+
+      // barycenter ORDER sweeps within the component (reduce edge crossings)
+      var pos = {};
+      function reindex() { compLayers.forEach(function (ids) { if (ids) ids.forEach(function (id, k) { pos[id] = k; }); }); }
+      reindex();
+      function orderSweep(neigh) {
+        compLayers.forEach(function (ids) {
+          if (!ids) return;
+          var keyed = ids.map(function (id) {
+            var ns = neigh[id].filter(function (n) { return pos[n] !== undefined; });
+            var bary = ns.length ? ns.reduce(function (s, n) { return s + pos[n]; }, 0) / ns.length : pos[id];
+            return { id: id, k: bary };
+          });
+          keyed.sort(function (a, b) { return a.k - b.k || pos[a.id] - pos[b.id]; });
+          ids.length = 0; keyed.forEach(function (e) { ids.push(e.id); });
+          reindex();
+        });
+      }
+      orderSweep(inn); orderSweep(out); orderSweep(inn); orderSweep(out);
+
+      // seed y by slot within layer (local to this component)
+      var y = {};
+      compLayers.forEach(function (ids) {
+        if (!ids) return;
+        ids.forEach(function (id, k) { y[id] = k * (NODE_H + V_GAP); });
+      });
+
+      // POSITION passes: pull each node toward the mean y of its cross-layer neighbours,
+      // then keep min spacing within the layer (preserving order) and recenter the block.
+      function positionPass(neigh, forward) {
+        var order = [];
+        for (var L = 0; L < compLayers.length; L++) order.push(L);
+        if (!forward) order.reverse();
+        order.forEach(function (L) {
+          var ids = compLayers[L];
+          if (!ids || !ids.length) return;
+          var desired = ids.map(function (id) {
+            var ns = neigh[id].filter(function (n) { return y[n] !== undefined && layer[n] !== L; });
+            return ns.length ? ns.reduce(function (s, n) { return s + y[n]; }, 0) / ns.length : y[id];
+          });
+          var placed = [];
+          for (var k = 0; k < ids.length; k++) {
+            var yk = desired[k];
+            if (k > 0) yk = Math.max(yk, placed[k - 1] + NODE_H + V_GAP);
+            placed.push(yk);
+          }
+          var meanD = desired.reduce(function (s, v) { return s + v; }, 0) / desired.length;
+          var meanP = placed.reduce(function (s, v) { return s + v; }, 0) / placed.length;
+          var shift = meanD - meanP;
+          ids.forEach(function (id, k) { y[id] = placed[k] + shift; });
+        });
+      }
+      for (var p = 0; p < 4; p++) { positionPass(inn, true); positionPass(out, false); }
+
+      // normalize the component to start at yCursor, emit nodes
+      var ys = comp.map(function (id) { return y[id]; });
+      var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+      var offset = yCursor - minY;
+      comp.forEach(function (id) {
+        var w = nodeWidth(byId[id]);
+        var n = { id: id, el: byId[id], x: layerX[layer[id]] + (layerW[layer[id]] - w) / 2,
+                  y: y[id] + offset, w: w, h: NODE_H, layer: layer[id] };
+        nodes[id] = n; nodeList.push(n);
+      });
+      yCursor += (maxY - minY) + NODE_H + COMPONENT_GAP;
+    });
+
+    var totalHeight = Math.max(NODE_H, yCursor - COMPONENT_GAP);
+
+    // ---- edge endpoints: distribute multiple links on a node side evenly ----
+    var outLinks = {}, inLinks = {};
+    links.forEach(function (l) {
+      (outLinks[srcEl(l)] = outLinks[srcEl(l)] || []).push(l);
+      (inLinks[sinkEl(l)] = inLinks[sinkEl(l)] || []).push(l);
+    });
+    function side(list, l, node) {
+      var k = list.indexOf(l), n = list.length;
+      return node.y + node.h * (k + 1) / (n + 1);
+    }
+    var edges = links.map(function (l) {
+      var a = nodes[srcEl(l)], b = nodes[sinkEl(l)];
+      var x0 = a.x + a.w, y0 = side(outLinks[a.id], l, a);
+      var x1 = b.x, y1 = side(inLinks[b.id], l, b);
+      var dx = Math.max(28, (x1 - x0) / 2);
+      return { link: l, src: a.id, dst: b.id, x0: x0, y0: y0, x1: x1, y1: y1,
+               path: "M" + x0 + "," + y0 + " C" + (x0 + dx) + "," + y0 + " " + (x1 - dx) + "," + y1 + " " + x1 + "," + y1 };
+    });
+
+    return { nodes: nodeList, byId: nodes, edges: edges, width: totalWidth + 4, height: totalHeight + 4 };
+  }
+
+  return { layout: layout, nodeWidth: nodeWidth, NODE_H: NODE_H };
+})();
+if (typeof module !== "undefined") module.exports = GPLayout;
+/* Small canvas drawing helpers shared by the inspector sparklines, the timeline,
+   the system lanes and the scrubber. All draw in CSS pixels; setup() handles DPR. */
+var GPDraw = (function () {
+  function css(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888";
+  }
+
+  /* Size a canvas to its CSS box at device resolution; returns a ctx scaled to CSS px. */
+  function setup(canvas) {
+    var r = canvas.getBoundingClientRect();
+    var dpr = window.devicePixelRatio || 1;
+    var w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
+    if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+      canvas.width = w * dpr; canvas.height = h * dpr;
+    }
+    var ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx: ctx, w: w, h: h };
+  }
+
+  function finiteMax(vals, floor) {
+    var m = floor || 0;
+    for (var i = 0; i < vals.length; i++) if (typeof vals[i] === "number" && vals[i] > m) m = vals[i];
+    return m;
+  }
+
+  /* Polyline of a numeric-or-null series inside (x,y,w,h); null gaps break the line. */
+  function line(ctx, vals, x, y, w, h, max, color, fill) {
+    if (!vals.length || max <= 0) return;
+    var dx = vals.length > 1 ? w / (vals.length - 1) : 0;
+    ctx.save();
+    ctx.lineWidth = 1.6; ctx.strokeStyle = color; ctx.lineJoin = "round";
+    var started = false;
+    ctx.beginPath();
+    for (var i = 0; i < vals.length; i++) {
+      var v = vals[i];
+      if (typeof v !== "number") { started = false; continue; }
+      var px = x + i * dx, py = y + h - Math.min(1, v / max) * h;
+      if (!started) { ctx.moveTo(px, py); started = true; } else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+    if (fill) {
+      ctx.globalAlpha = 0.13; ctx.fillStyle = color;
+      ctx.lineTo(x + (vals.length - 1) * dx, y + h); ctx.lineTo(x, y + h);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /* p50–p95 band + p95 line. */
+  function band(ctx, lo, hi, x, y, w, h, max, color) {
+    if (!hi.length || max <= 0) return;
+    var dx = hi.length > 1 ? w / (hi.length - 1) : 0;
+    ctx.save();
+    ctx.globalAlpha = 0.18; ctx.fillStyle = color;
+    ctx.beginPath();
+    var i, v, drew = false;
+    for (i = 0; i < hi.length; i++) {
+      v = typeof hi[i] === "number" ? hi[i] : 0;
+      var py = y + h - Math.min(1, v / max) * h;
+      if (!drew) { ctx.moveTo(x + i * dx, py); drew = true; } else ctx.lineTo(x + i * dx, py);
+    }
+    for (i = lo.length - 1; i >= 0; i--) {
+      v = typeof lo[i] === "number" ? lo[i] : 0;
+      ctx.lineTo(x + i * dx, y + h - Math.min(1, v / max) * h);
+    }
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+    line(ctx, hi, x, y, w, h, max, color, false);
+  }
+
+  /* Vertical marker at series index i. */
+  function cursor(ctx, i, n, x, y, w, h, color) {
+    if (n < 1 || i < 0) return;
+    var px = x + (n > 1 ? (i / (n - 1)) * w : 0);
+    ctx.save();
+    ctx.strokeStyle = color; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(px, y); ctx.lineTo(px, y + h); ctx.stroke();
+    ctx.restore();
+  }
+
+  function fmt(v, unit) {
+    if (typeof v !== "number") return "–";
+    var a = Math.abs(v);
+    var s = a >= 100 ? v.toFixed(0) : a >= 10 ? v.toFixed(1) : v.toFixed(2);
+    return s + (unit || "");
+  }
+
+  function fmtBytes(v) {
+    if (typeof v !== "number") return "–";
+    if (v >= 1e9) return (v / 1e9).toFixed(2) + " GB/s";
+    if (v >= 1e6) return (v / 1e6).toFixed(1) + " MB/s";
+    if (v >= 1e3) return (v / 1e3).toFixed(1) + " kB/s";
+    return v.toFixed(0) + " B/s";
+  }
+
+  function fmtClock(secs) {
+    if (typeof secs !== "number" || secs < 0) secs = 0;
+    var m = Math.floor(secs / 60), s = Math.floor(secs % 60);
+    return (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+  }
+
+  return { css: css, setup: setup, finiteMax: finiteMax, line: line, band: band,
+           cursor: cursor, fmt: fmt, fmtBytes: fmtBytes, fmtClock: fmtClock };
+})();
+if (typeof module !== "undefined") module.exports = GPDraw;
+/* Pipeline tab: the living graph. Node fill = vendor, heat bar = share of pipeline
+   latency at the cursor window; edge color = memory domain, width = bytes/s, dashes
+   animate in flow direction at a speed proportional to fps; a stalled link stops and
+   pulses red. Findings outline their targets. All text lands via textContent. */
+var GPPipeline = (function () {
+  var NS = "http://www.w3.org/2000/svg";
+  var svg, tooltip, layoutCache = { key: "", layout: null };
+  var edgeEls = {}, nodeEls = {}, heatEls = {}, procEls = {};
+  var dashOffsets = {}, lastFrame = 0, animating = false, showIdle = false;
+  var DASH_PERIOD = 12;                    // px per dash cycle ("7 5")
+  var SPEED = 0.55;                        // px/s of drift per fps — 30 fps ≈ 16.5 px/s
+
+  function el(tag, cls) {
+    var e = document.createElementNS(NS, tag);
+    if (cls) e.setAttribute("class", cls);
+    return e;
+  }
+
+  function graphKey(graph) {
+    return (graph.elements || []).map(function (e) { return e.id; }).join("|") + "//" +
+           (graph.links || []).map(function (l) { return l.id; }).join("|");
+  }
+
+  function ensureLayout(graph) {
+    var key = graphKey(graph);
+    if (layoutCache.key !== key) layoutCache = { key: key, layout: GPLayout.layout(graph) };
+    return layoutCache.layout;
+  }
+
+  function render(state) {
+    svg = svg || document.getElementById("graph");
+    tooltip = tooltip || document.getElementById("tooltip");
+    var session = state.session;
+    var graph = session && session.graph;
+    var empty = document.getElementById("graphempty");
+    var hasNodes = graph && (graph.elements || []).some(function (e) { return !e.is_bin; });
+    empty.hidden = !!hasNodes;
+    if (!hasNodes) { svg.replaceChildren(); layoutCache = { key: "", layout: null }; renderIdleToggle(0); return; }
+
+    // Idle stages (dormant whole capture — see idleElements) are hidden by default so
+    // the graph shows only pipelines that carried data. The toggle reveals them (dimmed).
+    var active = idleElements(state);
+    var idleIds = (graph.elements || []).filter(function (e) { return !e.is_bin && !active[e.id]; }).map(function (e) { return e.id; });
+    var activeCount = (graph.elements || []).filter(function (e) { return !e.is_bin; }).length - idleIds.length;
+    var useGraph = (showIdle || !idleIds.length || activeCount === 0) ? graph : withoutElements(graph, idleIds);
+
+    var L = ensureLayout(useGraph);
+    if (svg.getAttribute("data-key") !== layoutCache.key) rebuild(state, L, useGraph);
+    update(state, L, active);
+    renderIdleToggle(idleIds.length);
+  }
+
+  /* A shallow graph copy with the given elements (and any link touching them) removed. */
+  function withoutElements(graph, hideIds) {
+    var hidden = {};
+    hideIds.forEach(function (id) { hidden[id] = 1; });
+    return {
+      pipeline: graph.pipeline,
+      elements: (graph.elements || []).filter(function (e) { return !hidden[e.id]; }),
+      links: (graph.links || []).filter(function (l) {
+        return !hidden[String(l.src).split(":")[0]] && !hidden[String(l.sink).split(":")[0]];
+      }),
+    };
+  }
+
+  function renderIdleToggle(count) {
+    var host = document.getElementById("idletoggle");
+    if (!host) return;
+    if (!count) { host.hidden = true; return; }
+    host.hidden = false;
+    host.replaceChildren();
+    var lab = document.createElement("span");
+    lab.textContent = count + " idle stage" + (count > 1 ? "s" : "") + (showIdle ? " shown" : " hidden");
+    var btn = document.createElement("button");
+    btn.textContent = showIdle ? "hide" : "show";
+    btn.addEventListener("click", function () { showIdle = !showIdle; render(GPStore.state); });
+    host.appendChild(lab); host.appendChild(btn);
+  }
+
+  function rebuild(state, L, graph) {
+    svg.setAttribute("data-key", layoutCache.key);
+    svg.setAttribute("viewBox", "0 0 " + L.width + " " + L.height);
+    svg.setAttribute("width", L.width); svg.setAttribute("height", L.height);
+    svg.replaceChildren();
+    edgeEls = {}; nodeEls = {}; heatEls = {}; procEls = {};
+    var gEdges = el("g"), gNodes = el("g");
+    svg.appendChild(gEdges); svg.appendChild(gNodes);
+
+    L.edges.forEach(function (e) {
+      var p = el("path", "edge m-" + (e.link.memory || "unknown"));
+      p.setAttribute("d", e.path);
+      if ((e.link.memory || "unknown") === "unknown") p.setAttribute("stroke-dasharray", "3 5");
+      else p.setAttribute("stroke-dasharray", "7 5");
+      var hit = el("path", "edgehit");
+      hit.setAttribute("d", e.path);
+      hit.addEventListener("mousemove", function (ev) { edgeTip(ev, e); });
+      hit.addEventListener("mouseleave", hideTip);
+      gEdges.appendChild(p); gEdges.appendChild(hit);
+      edgeEls[e.link.id] = p;
+      dashOffsets[e.link.id] = dashOffsets[e.link.id] || 0;
+    });
+
+    L.nodes.forEach(function (n) {
+      var g = el("g", "node v-" + (n.el.vendor || "generic"));
+      g.setAttribute("transform", "translate(" + n.x + "," + n.y + ")");
+      var outline = el("rect", "outline");
+      outline.setAttribute("x", -3); outline.setAttribute("y", -3);
+      outline.setAttribute("width", n.w + 6); outline.setAttribute("height", n.h + 6);
+      var body = el("rect", "body");
+      body.setAttribute("width", n.w); body.setAttribute("height", n.h);
+      var fac = el("text");
+      fac.setAttribute("x", 9); fac.setAttribute("y", 19);
+      fac.textContent = n.el.factory || n.el.gtype || n.id;
+      var iname = el("text", "iname");
+      iname.setAttribute("x", 9); iname.setAttribute("y", 33);
+      if ((n.el.factory || "") !== n.id) iname.textContent = n.id;
+      var heat = el("rect", "heat");
+      heat.setAttribute("x", 8); heat.setAttribute("y", n.h - 8);
+      heat.setAttribute("height", 4); heat.setAttribute("width", 0);
+      var proc = el("text", "proctime");
+      proc.setAttribute("x", n.w - 9); proc.setAttribute("y", 19);
+      var idle = el("text", "idle-tag");
+      idle.setAttribute("x", n.w - 9); idle.setAttribute("y", 19);
+      idle.textContent = "idle";
+      g.appendChild(outline); g.appendChild(body); g.appendChild(fac); g.appendChild(iname); g.appendChild(heat); g.appendChild(proc); g.appendChild(idle);
+      g.addEventListener("click", function (ev) { ev.stopPropagation(); GPStore.select(n.id); });
+      g.addEventListener("mousemove", function (ev) { nodeTip(ev, n); });
+      g.addEventListener("mouseleave", hideTip);
+      gNodes.appendChild(g);
+      nodeEls[n.id] = g; heatEls[n.id] = heat; procEls[n.id] = proc;
+    });
+
+    svg.addEventListener("click", function () { GPStore.select(null); });
+  }
+
+  /* Continuous cold→amber→red scale. t in 0..1; the hottest element in the window is 1 (red). */
+  function heatAt(t) {
+    t = Math.max(0, Math.min(1, t));
+    var c0 = GPDraw.css("--heat0"), c1 = GPDraw.css("--heat1"), c2 = GPDraw.css("--heat2");
+    return t < 0.5 ? lerpHex(c0, c1, t * 2) : lerpHex(c1, c2, (t - 0.5) * 2);
+  }
+  function lerpHex(a, b, t) {
+    var pa = hex(a), pb = hex(b);
+    var m = function (k) { return Math.round(pa[k] + (pb[k] - pa[k]) * t); };
+    return "rgb(" + m(0) + "," + m(1) + "," + m(2) + ")";
+  }
+  function hex(c) {
+    c = String(c).replace("#", "");
+    if (c.length === 3) c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
+    return [parseInt(c.slice(0, 2), 16), parseInt(c.slice(2, 4), 16), parseInt(c.slice(4, 6), 16)];
+  }
+  function fmtMs(v) { return (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + " ms"; }
+
+  /* An element is idle when no link touching it ever carried a buffer in this session
+     (isolated nodes, or a pipeline dormant the whole capture — e.g. a recorder waiting
+     for its trigger). Dimmed + tagged so it reads as "waiting", not "broken". */
+  function idleElements(state) {
+    var links = state.session.series.links, active = {};
+    (state.session.graph.links || []).forEach(function (l) {
+      var fps = links[l.id] && links[l.id].fps;
+      var flows = fps && fps.some(function (v) { return typeof v === "number" && v > 0; });
+      if (flows) { active[String(l.src).split(":")[0]] = 1; active[String(l.sink).split(":")[0]] = 1; }
+    });
+    return active;                                   // any node NOT in here is idle
+  }
+
+  function update(state, L, active) {
+    var i = GPStore.cursorIndex();
+    var caps = (state.session.target && state.session.target.capabilities) || {};
+    var hasProc = caps.element_latency !== false;
+    active = active || idleElements(state);
+
+    // proc time (absolute, ms) + share (fraction of pipeline proc); heat is share
+    // normalized to the hottest element, so the biggest time sink is red and the rest ramp down.
+    var els = state.session.series.elements, procs = {}, total = 0;
+    if (hasProc) L.nodes.forEach(function (n) {
+      var arr = els[n.id] && els[n.id].proc_ms_p95, v = arr && arr[i];
+      if (typeof v === "number") { procs[n.id] = v; total += v; }
+    });
+    var maxShare = 0;
+    if (total > 0) Object.keys(procs).forEach(function (id) { maxShare = Math.max(maxShare, procs[id] / total); });
+
+    L.nodes.forEach(function (n) {
+      var g = nodeEls[n.id], heat = heatEls[n.id], proc = procEls[n.id];
+      var v = procs[n.id];
+      if (typeof v === "number" && total > 0) {
+        var share = v / total, col = heatAt(maxShare ? share / maxShare : 0);
+        heat.setAttribute("width", Math.round(share * (n.w - 16)));
+        heat.setAttribute("fill", col);
+        proc.textContent = fmtMs(v);
+        proc.setAttribute("fill", col);
+      } else {
+        heat.setAttribute("width", 0);
+        proc.textContent = "";
+      }
+      g.classList.toggle("selected", state.selected === n.id);
+      g.classList.toggle("idle", !active[n.id]);
+    });
+
+    // finding outlines: severity class per target; the focused (or top) finding is primary
+    var findings = (state.verdict && state.verdict.findings) || [];
+    var diagnostic = findings.filter(function (f) { return f.rule !== "HOT" && f.rule !== "OK"; });
+    var primary = state.focusFinding ? findings.filter(function (f) { return f.id === state.focusFinding; })[0]
+                                     : diagnostic[0];
+    Object.keys(nodeEls).forEach(function (id) {
+      nodeEls[id].classList.remove("f-high", "f-medium", "f-info", "f-primary");
+    });
+    Object.keys(edgeEls).forEach(function (id) {
+      edgeEls[id].classList.remove("f-high", "f-medium", "f-info");
+    });
+    // high/medium always paint; info (heuristic) findings only when focused or top —
+    // a healthy pipeline full of info findings must not read as a christmas tree
+    findings.slice().reverse().forEach(function (f) {          // reversed: rank 1 paints last, wins
+      if (f.severity === "info" && f !== primary) return;
+      if (f.rule === "HOT" || f.rule === "OK") return;
+      var t = f.targets || {};
+      (t.elements || []).forEach(function (id) {
+        if (nodeEls[id]) { nodeEls[id].classList.add("f-" + f.severity); }
+      });
+      (t.links || []).forEach(function (id) {
+        if (edgeEls[id]) edgeEls[id].classList.add("f-" + f.severity);
+      });
+    });
+    if (primary) (primary.targets && primary.targets.elements || []).forEach(function (id) {
+      if (nodeEls[id]) nodeEls[id].classList.add("f-primary");
+    });
+
+    // edge width + stall state at the cursor window
+    var links = state.session.series.links;
+    L.edges.forEach(function (e) {
+      var p = edgeEls[e.link.id], s = links[e.link.id];
+      var bytes = s && s.bytes_s ? s.bytes_s[i] : null;
+      var w = typeof bytes === "number" && bytes > 0 ? Math.min(8, 1.6 + Math.log10(1 + bytes) * 0.62) : 1.6;
+      p.setAttribute("stroke-width", w.toFixed(1));
+      var stalled = !!(s && s.stalled && s.stalled[i]);
+      p.classList.toggle("stalled", stalled);
+    });
+
+    startAnim();
+  }
+
+  /* rAF loop: drift dash offsets by each link's fps at the cursor window. */
+  function startAnim() {
+    if (animating) return;
+    animating = true; lastFrame = performance.now();
+    requestAnimationFrame(frame);
+  }
+  function frame(now) {
+    var visible = document.getElementById("view-pipeline").classList.contains("active");
+    var state = GPStore.state;
+    if (!visible || !state.session || !layoutCache.layout) { animating = false; return; }
+    var dt = Math.min(0.1, (now - lastFrame) / 1000); lastFrame = now;
+    var i = GPStore.cursorIndex();
+    var links = state.session.series.links;
+    var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    layoutCache.layout.edges.forEach(function (e) {
+      var id = e.link.id, p = edgeEls[id], s = links[id];
+      if (!p) return;
+      var fps = s && s.fps ? s.fps[i] : null;
+      var stalled = !!(s && s.stalled && s.stalled[i]);
+      if (reduced || stalled || typeof fps !== "number" || fps <= 0) return;
+      dashOffsets[id] = (dashOffsets[id] - fps * SPEED * dt) % DASH_PERIOD;
+      p.setAttribute("stroke-dashoffset", dashOffsets[id].toFixed(2));
+    });
+    requestAnimationFrame(frame);
+  }
+
+  function edgeTip(ev, e) {
+    var state = GPStore.state, i = GPStore.cursorIndex();
+    var s = state.session.series.links[e.link.id] || {};
+    var fps = s.fps ? s.fps[i] : null, bytes = s.bytes_s ? s.bytes_s[i] : null;
+    var rows = [
+      "<b>" + escTip(e.src) + " → " + escTip(e.dst) + "</b>",
+      "memory: <b>" + escTip(e.link.memory || "unknown") + "</b>" + (e.link.format ? " · " + escTip(e.link.format) : ""),
+      GPDraw.fmt(fps, " fps") + " · " + GPDraw.fmtBytes(bytes) + (s.stalled && s.stalled[i] ? " · <b>stalled</b>" : ""),
+    ];
+    if (e.link.caps) rows.push('<span class="mono">' + escTip(e.link.caps) + "</span>");
+    showTip(ev, rows.join("<br>"));
+  }
+
+  function nodeTip(ev, n) {
+    var state = GPStore.state, i = GPStore.cursorIndex();
+    var s = state.session.series.elements[n.id] || {};
+    var p95 = s.proc_ms_p95 ? s.proc_ms_p95[i] : null, cpu = s.cpu_pct ? s.cpu_pct[i] : null;
+    showTip(ev, "<b>" + escTip(n.id) + "</b><br>proc p95 " + GPDraw.fmt(p95, " ms") +
+                " · cpu " + GPDraw.fmt(cpu, "%") + "<br><span class='dim'>click for details</span>");
+  }
+
+  function showTip(ev, html) {
+    tooltip.innerHTML = html;                       // built only from escTip'd strings
+    tooltip.hidden = false;
+    var x = Math.min(ev.clientX + 14, window.innerWidth - tooltip.offsetWidth - 8);
+    var y = Math.min(ev.clientY + 14, window.innerHeight - tooltip.offsetHeight - 8);
+    tooltip.style.left = x + "px"; tooltip.style.top = y + "px";
+  }
+  function hideTip() { tooltip.hidden = true; }
+
+  function escTip(v) {
+    return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  return { render: render, esc: escTip };
+})();
+if (typeof module !== "undefined") module.exports = GPPipeline;
+/* Right-side inspector for the selected element: identity, properties, per-metric
+   sparklines with the value at the cursor, and the findings touching it. */
+var GPInspector = (function () {
+  var METRICS = [
+    { key: "proc_ms_p95", label: "proc p95", unit: " ms" },
+    { key: "proc_ms_p50", label: "proc p50", unit: " ms" },
+    { key: "cpu_pct", label: "cpu", unit: "%" },
+    { key: "queue_level", label: "queue level", unit: "" },
+  ];
+
+  function render(state) {
+    var box = document.getElementById("inspector");
+    var id = state.selected;
+    if (!id || !state.session) { box.hidden = true; return; }
+    var graphEl = (state.session.graph.elements || []).filter(function (e) { return e.id === id; })[0];
+    if (!graphEl) { box.hidden = true; return; }
+    box.hidden = false;
+    box.replaceChildren();
+
+    var close = mk("button", "close", "×");
+    close.addEventListener("click", function () { GPStore.select(null); });
+    box.appendChild(close);
+
+    var h = document.createElement("h2");
+    var fac = mk("span", "fac", graphEl.factory || graphEl.gtype || id);
+    h.appendChild(fac);
+    var vt = mk("span", "vtag v-" + (graphEl.vendor || "generic"), graphEl.vendor || "generic");
+    h.appendChild(vt);
+    box.appendChild(h);
+    if ((graphEl.factory || "") !== id) box.appendChild(mk("div", "dim mono", id));
+    if (graphEl.klass) box.appendChild(mk("div", "dim", graphEl.klass));
+    if (graphEl.bin && graphEl.bin !== state.session.graph.pipeline) {
+      box.appendChild(mk("div", "dim", "inside bin: " + graphEl.bin));
+    }
+
+    // sparklines
+    var s = state.session.series.elements[id] || {};
+    var i = GPStore.cursorIndex();
+    var any = false;
+    var sec = mk("div", "sec", "last " + state.session.series.t.length + " windows");
+    box.appendChild(sec);
+    METRICS.forEach(function (m) {
+      var vals = s[m.key] || [];
+      if (!GPStore.numeric(vals).length) return;
+      any = true;
+      box.appendChild(sparkRow(m.label, vals, i, m.unit));
+    });
+    linkRows(state, id, i).forEach(function (r) { any = true; box.appendChild(r); });
+    if (!any) box.appendChild(mk("div", "dim", "no per-element series on this capture"));
+
+    // properties
+    var props = graphEl.props || {};
+    var keys = Object.keys(props);
+    if (keys.length) {
+      box.appendChild(mk("div", "sec", "properties (non-default)"));
+      var table = document.createElement("table");
+      keys.sort().forEach(function (k) {
+        var tr = document.createElement("tr");
+        tr.appendChild(mkCell("td", "k mono", k));
+        tr.appendChild(mkCell("td", "v mono", String(props[k])));
+        table.appendChild(tr);
+      });
+      box.appendChild(table);
+    }
+
+    // findings touching this element
+    var touching = ((state.verdict && state.verdict.findings) || []).filter(function (f) {
+      return ((f.targets || {}).elements || []).indexOf(id) >= 0;
+    });
+    if (touching.length) {
+      box.appendChild(mk("div", "sec", "findings"));
+      touching.forEach(function (f) {
+        var chip = mk("button", "fchip " + f.severity, f.rule + " · " + f.title);
+        chip.addEventListener("click", function () {
+          GPStore.focusFinding(f.id);
+          GPApp.showTab("analysis");
+        });
+        box.appendChild(chip);
+      });
+    }
+  }
+
+  /* fps in/out at the cursor from the links touching the element. */
+  function linkRows(state, id, i) {
+    var out = [];
+    (state.session.graph.links || []).forEach(function (l) {
+      var isIn = String(l.sink).split(":")[0] === id, isOut = String(l.src).split(":")[0] === id;
+      if (!isIn && !isOut) return;
+      var s = state.session.series.links[l.id];
+      if (!s || !GPStore.numeric(s.fps || []).length) return;
+      out.push(sparkRow(isIn ? "fps in" : "fps out", s.fps, i, " fps"));
+    });
+    return out.slice(0, 4);
+  }
+
+  function sparkRow(label, vals, i, unit) {
+    var row = mk("div", "spark", "");
+    var c = document.createElement("canvas");
+    c.width = 110; c.height = 24;
+    c.style.width = "110px"; c.style.height = "24px";
+    var ctx = c.getContext("2d");
+    var max = GPDraw.finiteMax(vals, 1e-9) * 1.18;
+    GPDraw.line(ctx, vals, 2, 2, 106, 20, max, GPDraw.css("--info"), true);
+    GPDraw.cursor(ctx, i, vals.length, 2, 2, 106, 20, GPDraw.css("--ink3"));
+    row.appendChild(c);
+    row.appendChild(mk("span", "lab", label));
+    row.appendChild(mk("span", "val mono", GPDraw.fmt(vals[i], unit)));
+    return row;
+  }
+
+  function mk(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text) e.textContent = text;
+    return e;
+  }
+  function mkCell(tag, cls, text) { return mk(tag, cls, text); }
+
+  return { render: render };
+})();
+if (typeof module !== "undefined") module.exports = GPInspector;
+/* Timeline tab: stacked lanes on the shared time axis — pipeline latency band first,
+   then element proc-time lanes hottest-first (toggleable), then link fps lanes.
+   Crosshair hover reads every lane at that instant; events are vertical markers. */
+var GPTimeline = (function () {
+  var LANE_H = 34, GUTTER = 170, PAD_T = 6, HEADROOM = 1.18;
+  var hidden = {};                       // element/link id -> user toggled off
+  var hover = null;                      // hovered series index
+
+  function lanes(state) {
+    var s = state.session.series, out = [];
+    if (GPStore.numeric(s.pipeline.latency_ms_p95).length) {
+      out.push({ kind: "band", label: "pipeline latency", lo: s.pipeline.latency_ms_p50,
+                 hi: s.pipeline.latency_ms_p95, unit: " ms", color: "--info" });
+    }
+    var els = Object.keys(s.elements).map(function (id) {
+      var v = GPStore.numeric(s.elements[id].proc_ms_p95 || []);
+      return { id: id, mean: v.length ? v.reduce(function (a, b) { return a + b; }, 0) / v.length : -1 };
+    }).filter(function (e) { return e.mean >= 0; }).sort(function (a, b) { return b.mean - a.mean; });
+    els.forEach(function (e) {
+      if (hidden[e.id]) return;
+      out.push({ kind: "line", label: e.id, vals: state.session.series.elements[e.id].proc_ms_p95,
+                 unit: " ms", color: "--medium", id: e.id });
+    });
+    Object.keys(s.links).sort().forEach(function (id) {
+      if (hidden[id]) return;
+      var v = s.links[id];
+      if (!GPStore.numeric(v.fps || []).length) return;
+      out.push({ kind: "line", label: shortLink(id), vals: v.fps, unit: " fps",
+                 color: "--info", id: id, stalled: v.stalled });
+    });
+    return out;
+  }
+
+  function shortLink(id) {
+    var m = id.split("->");
+    return m.length === 2 ? m[0].split(":")[0] + " → " + m[1].split(":")[0] : id;
+  }
+
+  function chips(state) {
+    var host = document.getElementById("tl-toggles");
+    var s = state.session.series;
+    var ids = Object.keys(s.elements).filter(function (id) {
+      return GPStore.numeric(s.elements[id].proc_ms_p95 || []).length;
+    });
+    var key = ids.join("|");
+    if (host.getAttribute("data-key") === key) {
+      Array.prototype.forEach.call(host.children, function (b) {
+        b.classList.toggle("on", !hidden[b.getAttribute("data-id")]);
+      });
+      return;
+    }
+    host.setAttribute("data-key", key);
+    host.replaceChildren();
+    ids.forEach(function (id) {
+      var b = document.createElement("button");
+      b.textContent = id; b.setAttribute("data-id", id);
+      b.classList.toggle("on", !hidden[id]);
+      b.addEventListener("click", function () { hidden[id] = !hidden[id]; GPTimeline.render(GPStore.state); });
+      host.appendChild(b);
+    });
+  }
+
+  function render(state) {
+    var canvas = document.getElementById("tl");
+    if (!state.session || !document.getElementById("view-timeline").classList.contains("active")) return;
+    chips(state);
+    var d = GPDraw.setup(canvas), ctx = d.ctx;
+    ctx.clearRect(0, 0, d.w, d.h);
+    var s = state.session.series, n = s.t.length;
+    var ls = lanes(state);
+    var plotW = d.w - GUTTER - 14;
+    var ink2 = GPDraw.css("--ink2"), ink3 = GPDraw.css("--ink3"), border = GPDraw.css("--border");
+
+    if (!n || !ls.length) {
+      ctx.fillStyle = ink3; ctx.font = "13px system-ui";
+      ctx.fillText("no series yet — waiting for the first window", 16, 26);
+      return;
+    }
+
+    ls.forEach(function (lane, li) {
+      var y = PAD_T + li * LANE_H;
+      if (y + LANE_H > d.h) return;                      // clipped; lane count fits typical pipelines
+      ctx.fillStyle = ink2; ctx.font = "11.5px ui-monospace, Menlo, monospace";
+      ctx.fillText(clip(ctx, lane.label, GUTTER - 18), 10, y + 14);
+      ctx.strokeStyle = border; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(GUTTER, y + LANE_H - 6.5); ctx.lineTo(GUTTER + plotW, y + LANE_H - 6.5); ctx.stroke();
+      var color = GPDraw.css(lane.color);
+      if (lane.kind === "band") {
+        var max = GPDraw.finiteMax(lane.hi, 1e-9);
+        GPDraw.band(ctx, lane.lo, lane.hi, GUTTER, y + 3, plotW, LANE_H - 10, max * HEADROOM, color);
+        label(ctx, lane, max, GUTTER + plotW, y, ink3);
+      } else {
+        var mx = GPDraw.finiteMax(lane.vals, 1e-9);
+        GPDraw.line(ctx, lane.vals, GUTTER, y + 3, plotW, LANE_H - 10, mx * HEADROOM, color, true);
+        label(ctx, lane, mx, GUTTER + plotW, y, ink3);
+        if (lane.stalled) markStalls(ctx, lane.stalled, GUTTER, y + 3, plotW, LANE_H - 10);
+      }
+    });
+
+    var plotH = Math.min(d.h - PAD_T, ls.length * LANE_H);
+    drawEvents(ctx, state, GUTTER, PAD_T, plotW, plotH, n);
+    GPDraw.cursor(ctx, GPStore.cursorIndex(), n, GUTTER, PAD_T, plotW, plotH, ink2);
+    if (hover !== null) {
+      GPDraw.cursor(ctx, hover, n, GUTTER, PAD_T, plotW, plotH, GPDraw.css("--focus"));
+      hoverTipContent(state, ls, hover);
+    }
+  }
+
+  function label(ctx, lane, max, xRight, y, color) {
+    ctx.fillStyle = color; ctx.font = "10.5px ui-monospace, Menlo, monospace"; ctx.textAlign = "right";
+    ctx.fillText("≤" + GPDraw.fmt(max, lane.unit), GUTTER - 10, y + 24);   // scale max, in the gutter
+    ctx.textAlign = "left";
+  }
+
+  function markStalls(ctx, stalled, x, y, w, h) {
+    var n = stalled.length, dx = n > 1 ? w / (n - 1) : 0;
+    ctx.save(); ctx.fillStyle = GPDraw.css("--high"); ctx.globalAlpha = 0.5;
+    for (var i = 0; i < n; i++) if (stalled[i] === true) ctx.fillRect(x + i * dx - 1, y, 2, h);
+    ctx.restore();
+  }
+
+  function drawEvents(ctx, state, x, y, w, h, n) {
+    var t = state.session.series.t;
+    if (!t.length) return;
+    var t0 = t[0], t1 = t[t.length - 1] || 1;
+    ctx.save(); ctx.strokeStyle = GPDraw.css("--ink3"); ctx.setLineDash([2, 3]);
+    (state.session.events || []).forEach(function (ev) {
+      if (typeof ev.t !== "number" || ev.t < t0 || ev.t > t1) return;
+      var px = x + (t1 > t0 ? (ev.t - t0) / (t1 - t0) : 0) * w;
+      ctx.beginPath(); ctx.moveTo(px, y); ctx.lineTo(px, y + h); ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  function hoverTipContent(state, ls, i) {
+    var tooltip = document.getElementById("tooltip");
+    var t = state.session.series.t[i];
+    var lines = ["<b>t = " + GPDraw.fmt(t, " s") + "</b>"];
+    ls.slice(0, 14).forEach(function (lane) {
+      var v = lane.kind === "band" ? lane.hi[i] : lane.vals[i];
+      lines.push(GPPipeline.esc(lane.label) + ": <b>" + GPDraw.fmt(v, lane.unit) + "</b>");
+    });
+    var evs = (state.session.events || []).filter(function (e) { return Math.abs(e.t - t) < 0.5; });
+    evs.slice(0, 3).forEach(function (e) { lines.push("◆ " + GPPipeline.esc(e.kind + ": " + e.text)); });
+    tooltip.innerHTML = lines.join("<br>");
+    tooltip.hidden = false;
+  }
+
+  function clip(ctx, text, maxW) {
+    if (ctx.measureText(text).width <= maxW) return text;
+    while (text.length > 2 && ctx.measureText(text + "…").width > maxW) text = text.slice(0, -1);
+    return text + "…";
+  }
+
+  function wire() {
+    var canvas = document.getElementById("tl");
+    canvas.addEventListener("mousemove", function (ev) {
+      var st = GPStore.state;
+      if (!st.session) return;
+      var r = canvas.getBoundingClientRect();
+      var n = st.session.series.t.length;
+      var frac = (ev.clientX - r.left - GUTTER) / Math.max(1, r.width - GUTTER - 14);
+      if (frac < 0 || frac > 1 || n < 1) { hover = null; document.getElementById("tooltip").hidden = true; }
+      else hover = Math.round(frac * (n - 1));
+      var tip = document.getElementById("tooltip");
+      tip.style.left = Math.min(ev.clientX + 14, window.innerWidth - 300) + "px";
+      tip.style.top = Math.max(8, ev.clientY - 30) + "px";
+      render(st);
+    });
+    canvas.addEventListener("mouseleave", function () {
+      hover = null; document.getElementById("tooltip").hidden = true; render(GPStore.state);
+    });
+    canvas.addEventListener("click", function () {
+      if (hover !== null) GPStore.setCursor(hover, false);
+    });
+  }
+
+  return { render: render, wire: wire };
+})();
+if (typeof module !== "undefined") module.exports = GPTimeline;
+/* System tab: per-core CPU and hardware-unit lanes (GR3D / VIC / NVENC / NVDEC / EMC)
+   on the shared axis, 0–100 % fixed scale. A unit whose series is all null renders as
+   an explicit "not available on this board" lane instead of silent zeros. */
+var GPSystem = (function () {
+  var LANE_H = 34, GUTTER = 170, PAD_T = 6;
+  var UNITS = [
+    { key: "cpu_pct", label: "cpu total" },
+    { key: "gr3d_pct", label: "GR3D (gpu)" },
+    { key: "vic_pct", label: "VIC" },
+    { key: "nvenc_pct", label: "NVENC" },
+    { key: "nvdec_pct", label: "NVDEC" },
+    { key: "emc_pct", label: "EMC (memory)" },
+  ];
+
+  function coreSeries(sys) {
+    var per = sys.cpu_pct_per_core || [];
+    var ncores = 0;
+    per.forEach(function (row) { if (Array.isArray(row)) ncores = Math.max(ncores, row.length); });
+    var out = [];
+    for (var c = 0; c < ncores; c++) {
+      out.push({ label: "cpu core " + c, vals: per.map(function (row) {
+        return Array.isArray(row) && typeof row[c] === "number" ? row[c] : null; }) });
+    }
+    return out;
+  }
+
+  function render(state) {
+    var canvas = document.getElementById("sys");
+    if (!state.session || !document.getElementById("view-system").classList.contains("active")) return;
+    var d = GPDraw.setup(canvas), ctx = d.ctx;
+    ctx.clearRect(0, 0, d.w, d.h);
+    var s = state.session.series, sys = s.system, n = s.t.length;
+    var plotW = d.w - GUTTER - 14;
+    var ink2 = GPDraw.css("--ink2"), ink3 = GPDraw.css("--ink3"), border = GPDraw.css("--border");
+    var jetson = (state.session.target || {}).platform === "jetson";
+
+    var lanes = coreSeries(sys).map(function (c) { return { label: c.label, vals: c.vals, avail: true }; });
+    UNITS.forEach(function (u) {
+      if (u.key !== "cpu_pct" && !jetson && !GPStore.numeric(sys[u.key] || []).length) return;   // tegra lanes only where expected
+      var vals = sys[u.key] || [];
+      lanes.push({ label: u.label, vals: vals, avail: !!GPStore.numeric(vals).length });
+    });
+
+    if (!n || !lanes.length) {
+      ctx.fillStyle = ink3; ctx.font = "13px system-ui";
+      ctx.fillText("no system series on this capture — see `gst-profile check`", 16, 26);
+      return;
+    }
+
+    lanes.forEach(function (lane, li) {
+      var y = PAD_T + li * LANE_H;
+      if (y + LANE_H > d.h) return;
+      ctx.fillStyle = ink2; ctx.font = "11.5px ui-monospace, Menlo, monospace";
+      ctx.fillText(lane.label, 10, y + 14);
+      ctx.strokeStyle = border; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(GUTTER, y + LANE_H - 6.5); ctx.lineTo(GUTTER + plotW, y + LANE_H - 6.5); ctx.stroke();
+      if (!lane.avail) {
+        ctx.fillStyle = ink3; ctx.font = "11px system-ui";
+        ctx.fillText("not available on this board — see `gst-profile check`", GUTTER + 6, y + 14);
+        return;
+      }
+      var i = GPStore.cursorIndex();
+      var v = lane.vals[i];
+      GPDraw.line(ctx, lane.vals, GUTTER, y + 3, plotW, LANE_H - 10, 100, GPDraw.css("--info"), true);
+      ctx.fillStyle = ink3; ctx.font = "10.5px ui-monospace, Menlo, monospace";
+      ctx.fillText(GPDraw.fmt(v, "%"), 10 + 92, y + 14);          // value at cursor, in the gutter
+    });
+
+    var plotH = Math.min(d.h - PAD_T, lanes.length * LANE_H);
+    GPDraw.cursor(ctx, GPStore.cursorIndex(), n, GUTTER, PAD_T, plotW, plotH, ink2);
+  }
+
+  return { render: render };
+})();
+if (typeof module !== "undefined") module.exports = GPSystem;
+/* Analysis tab: the ranked findings, each expandable to evidence → why → fix, with
+   the structured patch rendered as a best-effort launch-string diff. Heuristic and
+   static findings are visibly labeled; the footer carries verified_on + scoping. */
+var GPAnalysis = (function () {
+  function render(state) {
+    var host = document.getElementById("findings");
+    var verdict = state.verdict;
+    if (!verdict || !verdict.findings || !verdict.findings.length) {
+      host.replaceChildren(mk("p", "dim", verdict ? "no findings." : "waiting for the first verdict…"));
+      renderFooter(state);
+      return;
+    }
+    var openIds = {};
+    Array.prototype.forEach.call(host.querySelectorAll(".finding.open"), function (el) {
+      openIds[el.getAttribute("data-id")] = true;
+    });
+    if (state.focusFinding) openIds[state.focusFinding] = true;
+    host.replaceChildren();
+    verdict.findings.forEach(function (f) {
+      host.appendChild(card(state, f, openIds[f.id]));
+    });
+    renderFooter(state);
+    if (state.focusFinding) {
+      var el = host.querySelector('[data-id="' + cssEscape(state.focusFinding) + '"]');
+      if (el) el.scrollIntoView({ block: "nearest" });
+    }
+  }
+
+  function card(state, f, open) {
+    var d = mk("div", "finding " + f.severity + (open ? " open" : ""));
+    d.setAttribute("data-id", f.id || "");
+
+    var head = mk("div", "head");
+    head.appendChild(mk("span", "sev", f.severity));
+    head.appendChild(mk("span", "rule mono", f.rule));
+    var title = mk("span", "title", f.title);
+    head.appendChild(title);
+    if (typeof f.share_of_latency_pct === "number") {
+      head.appendChild(mk("span", "share mono", f.share_of_latency_pct.toFixed(0) + "%"));
+    }
+    if (f.heuristic && f.severity === "info" && f.rule !== "HOT" && f.rule !== "OK") {
+      head.appendChild(mk("span", "heur", "heuristic"));
+    }
+    head.addEventListener("click", function () { d.classList.toggle("open"); });
+    d.appendChild(head);
+
+    var body = mk("div", "body");
+    var ev = f.evidence || {};
+    var evKeys = Object.keys(ev);
+    if (evKeys.length) {
+      body.appendChild(mk("h4", "", "evidence"));
+      var table = mk("table", "ev");
+      evKeys.forEach(function (k) {
+        var tr = document.createElement("tr");
+        tr.appendChild(mk("td", "k mono", k));
+        tr.appendChild(mk("td", "v mono", String(ev[k])));
+        table.appendChild(tr);
+      });
+      body.appendChild(table);
+    }
+    if (f.why) { body.appendChild(mk("h4", "", "why")); body.appendChild(mk("p", "", f.why)); }
+    body.appendChild(mk("h4", "", "fix"));
+    if (f.fix_text) body.appendChild(mk("p", "", f.fix_text));
+    var diff = launchDiff(state, f.fix_patch);
+    if (diff) body.appendChild(diff);
+    else if (f.fix_patch) body.appendChild(mk("p", "dim mono", patchLine(f.fix_patch)));
+
+    var actions = mk("div", "actions");
+    var show = mk("button", "", "Show on pipeline");
+    show.addEventListener("click", function () {
+      GPStore.focusFinding(f.id);
+      GPApp.showTab("pipeline");
+    });
+    actions.appendChild(show);
+    if (f.ref && /^https?:\/\//.test(f.ref)) {
+      var a = document.createElement("a");
+      a.href = f.ref; a.target = "_blank"; a.rel = "noopener";
+      a.textContent = "reference →";
+      actions.appendChild(a);
+    }
+    if (f.verified_on && f.verified_on.length) {
+      actions.appendChild(mk("span", "dim", "verified on " + f.verified_on.join(", ")));
+    }
+    body.appendChild(actions);
+    d.appendChild(body);
+    return d;
+  }
+
+  /* One-line description of a structured fix patch (rules.py shapes):
+     replace-element {element, with} · insert-element {before, element} ·
+     set-property {element, property, value} · set-caps {link, to} · remove-element {element} */
+  function patchLine(p) {
+    switch (p.kind) {
+      case "replace-element": return "replace " + p.element + " with " + p.with;
+      case "insert-element": return "insert " + p.element + (p.before ? " before " + p.before : "");
+      case "set-property": return "set " + p.element + " " + p.property + "=" + p.value;
+      case "set-caps": return "force caps " + (p.to || "") + (p.link ? " on " + p.link : "");
+      case "remove-element": return "remove " + p.element;
+      default: return JSON.stringify(p);
+    }
+  }
+
+  /* Resolve an instance name to its factory token in the launch string; null when the
+     token is absent or appears more than once (ambiguous). */
+  function tokenIndex(state, tokens, instance) {
+    var els = state.session.graph.elements || [];
+    var target = els.filter(function (e) { return e.id === instance; })[0];
+    var factory = target && target.factory;
+    if (!factory) return -1;
+    var first = tokens.indexOf(factory);
+    return first >= 0 && tokens.indexOf(factory, first + 1) < 0 ? first : -1;
+  }
+
+  /* Best-effort render of the patch as a diff of the launch string. Falls back to null
+     (caller shows the plain patch line) when the anchor token can't be resolved. */
+  function launchDiff(state, patch) {
+    var launch = state.session && state.session.session && state.session.session.launch;
+    if (!patch || !launch) return null;
+    var tokens = launch.split(/\s+/);
+    var pre = mk("div", "patch mono");
+    function span(text) { if (text) pre.appendChild(document.createTextNode(text)); }
+    function delTok(text) { var e = document.createElement("del"); e.textContent = text; pre.appendChild(e); }
+    function insTok(text) { var e = document.createElement("ins"); e.textContent = text; pre.appendChild(e); }
+    var idx;
+    if (patch.kind === "replace-element" && patch.with) {
+      idx = tokenIndex(state, tokens, patch.element);
+      if (idx < 0) return null;
+      span(tokens.slice(0, idx).join(" ") + " ");
+      delTok(tokens[idx]); span(" "); insTok(patch.with);
+      span(" " + tokens.slice(idx + 1).join(" "));
+    } else if (patch.kind === "insert-element" && patch.before) {
+      idx = tokenIndex(state, tokens, patch.before);
+      if (idx < 0) return null;
+      span(tokens.slice(0, idx).join(" ") + " ");
+      insTok(patch.element + " !"); span(" ");
+      span(tokens.slice(idx).join(" "));
+    } else if (patch.kind === "set-property" && patch.property) {
+      idx = tokenIndex(state, tokens, patch.element);
+      if (idx < 0) return null;
+      span(tokens.slice(0, idx + 1).join(" ") + " ");
+      insTok(patch.property + "=" + patch.value);
+      span(" " + tokens.slice(idx + 1).join(" "));
+    } else if (patch.kind === "set-caps" && patch.link && patch.to) {
+      idx = tokenIndex(state, tokens, String(patch.link).split(":")[0]);
+      if (idx < 0) return null;
+      span(tokens.slice(0, idx + 1).join(" ") + " ");
+      insTok("! " + patch.to);
+      span(" " + tokens.slice(idx + 1).join(" "));
+    } else {
+      return null;
+    }
+    return pre;
+  }
+
+  function renderFooter(state) {
+    var foot = document.getElementById("an-footer");
+    foot.replaceChildren();
+    var verdict = state.verdict || {};
+    var verified = {};
+    (verdict.findings || []).forEach(function (f) {
+      (f.verified_on || []).forEach(function (c) { verified[c] = true; });
+    });
+    var configs = Object.keys(verified);
+    foot.appendChild(mk("span", "", configs.length
+      ? "rules verified on: " + configs.join(", ") + " · "
+      : "no rules bench-verified on hardware yet — diagnostics above are heuristic · "));
+    var scope = verdict.scope || ((verdict.findings || [])[0] || {}).ref;
+    if (scope && /^https?:\/\//.test(scope)) {
+      var a = document.createElement("a");
+      a.href = scope; a.target = "_blank"; a.rel = "noopener";
+      a.textContent = "need help with this pipeline? scoping call →";
+      foot.appendChild(a);
+    }
+  }
+
+  function cssEscape(s) {
+    return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+  }
+
+  function mk(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined && text !== "") e.textContent = text;
+    return e;
+  }
+
+  return { render: render };
+})();
+if (typeof module !== "undefined") module.exports = GPAnalysis;
+/* App chrome: mode bootstrap (report / live / replay), SSE wiring with resync,
+   status strip, tabs, controls, the shared scrubber, and drag-drop replay. */
+var GPApp = (function () {
+  var es = null, activeTab = "pipeline";
+  var scrubDrag = false;
+
+  // ---- boot ----------------------------------------------------------------
+  function boot() {
+    GPTimeline.wire();
+    wireChrome();
+    GPStore.subscribe(onState);
+    var hash = parseHash();
+    if (hash.tab) showTab(hash.tab);
+    if (hash.select) GPStore.select(hash.select);
+    if (window.__SESSION__) {
+      GPStore.applyStatus({ state: "report" });
+      if (window.__VERDICT__) GPStore.applyFindings(window.__VERDICT__);
+      GPStore.initSession(window.__SESSION__, "report");
+    } else {
+      connect(true);
+    }
+  }
+
+  function parseHash() {
+    var out = {};
+    String(location.hash || "").replace(/^#/, "").split("&").forEach(function (kv) {
+      var p = kv.split("=");
+      if (p.length === 2) out[p[0]] = decodeURIComponent(p[1]);
+    });
+    return out;
+  }
+
+  function connect(first) {
+    fetch("session.json").then(function (r) {
+      if (!r.ok) throw new Error("http " + r.status);
+      return r.json();
+    }).then(function (session) {
+      if (first) GPStore.initSession(session, "live");
+      else GPStore.resync(session);
+      stream();
+    }).catch(function () {
+      GPStore.applyStatus({ state: "disconnected" });
+      setTimeout(function () { connect(GPStore.state.session === null); }, 2000);
+    });
+  }
+
+  function stream() {
+    if (es) es.close();
+    es = new EventSource("events");
+    es.addEventListener("graph", function (e) { GPStore.applyGraph(JSON.parse(e.data)); });
+    es.addEventListener("tick", function (e) { GPStore.applyTick(JSON.parse(e.data)); });
+    es.addEventListener("findings", function (e) { GPStore.applyFindings(JSON.parse(e.data)); });
+    es.addEventListener("event", function (e) { GPStore.applyEvent(JSON.parse(e.data)); });
+    es.addEventListener("status", function (e) { GPStore.applyStatus(JSON.parse(e.data)); });
+    es.onerror = function () {
+      var done = GPStore.state.status.state === "done";
+      if (done) { if (es) { es.close(); es = null; } return; }
+      GPStore.applyStatus({ state: "disconnected" });
+      es.close(); es = null;
+      setTimeout(function () { connect(false); }, 2000);   // resync from the snapshot, then re-stream
+    };
+  }
+
+  // ---- chrome --------------------------------------------------------------
+  function wireChrome() {
+    Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (b) {
+      b.addEventListener("click", function () { showTab(b.getAttribute("data-tab")); });
+    });
+    document.getElementById("btn-stop").addEventListener("click", function () {
+      control({ action: "stop" });
+    });
+    document.getElementById("btn-mark").addEventListener("click", function () {
+      control({ action: "mark", text: "mark from panel" });
+    });
+    document.getElementById("btn-save").addEventListener("click", saveSession);
+    document.getElementById("btn-live").addEventListener("click", function () {
+      GPStore.setCursor(-1, true);
+    });
+    wireScrubber();
+    wireDrop();
+  }
+
+  function showTab(name) {
+    activeTab = name;
+    Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (b) {
+      b.classList.toggle("active", b.getAttribute("data-tab") === name);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".view"), function (v) {
+      v.classList.toggle("active", v.id === "view-" + name);
+    });
+    onState(GPStore.state);
+  }
+
+  function control(payload) {
+    fetch("control", { method: "POST", headers: { "Content-Type": "application/json" },
+                       body: JSON.stringify(payload) }).catch(function () {});
+  }
+
+  function saveSession() {
+    var state = GPStore.state;
+    if (state.mode === "report" && window.__SESSION__) {
+      download(JSON.stringify(window.__SESSION__));
+      return;
+    }
+    if (state.mode === "replay" && state.session) {
+      download(JSON.stringify(state.session));       // the dropped file is the session being viewed
+      return;
+    }
+    fetch("session.json?redact=1").then(function (r) { return r.text(); }).then(download)
+      .catch(function () { if (state.session) download(JSON.stringify(state.session)); });
+  }
+
+  function download(text) {
+    var id = (GPStore.state.session && GPStore.state.session.session.id) || "session";
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+    a.download = "gst-profile-" + id + ".json";
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+  }
+
+  // ---- scrubber ------------------------------------------------------------
+  function wireScrubber() {
+    var canvas = document.getElementById("scrubcanvas");
+    function toIndex(ev) {
+      var st = GPStore.state;
+      if (!st.session) return null;
+      var n = st.session.series.t.length;
+      if (n < 1) return null;
+      var r = canvas.getBoundingClientRect();
+      var frac = Math.max(0, Math.min(1, (ev.clientX - r.left) / Math.max(1, r.width)));
+      return Math.round(frac * (n - 1));
+    }
+    canvas.addEventListener("mousedown", function (ev) {
+      scrubDrag = true;
+      var i = toIndex(ev);
+      if (i !== null) GPStore.setCursor(i, false);
+    });
+    window.addEventListener("mousemove", function (ev) {
+      if (!scrubDrag) return;
+      var i = toIndex(ev);
+      if (i !== null) GPStore.setCursor(i, false);
+    });
+    window.addEventListener("mouseup", function () { scrubDrag = false; });
+  }
+
+  function renderScrubber(state) {
+    var canvas = document.getElementById("scrubcanvas");
+    var d = GPDraw.setup(canvas), ctx = d.ctx;
+    ctx.clearRect(0, 0, d.w, d.h);
+    if (!state.session) return;
+    var s = state.session.series, n = s.t.length;
+    var p95 = s.pipeline.latency_ms_p95;
+    var max = GPDraw.finiteMax(p95, 1e-9) * 1.15;      // headroom so a flat series reads as a line
+    ctx.fillStyle = GPDraw.css("--surface2");
+    ctx.fillRect(0, 0, d.w, d.h);
+    if (GPStore.numeric(p95).length) GPDraw.line(ctx, p95, 0, 3, d.w, d.h - 6, max, GPDraw.css("--info"), true);
+    (state.session.events || []).forEach(function (ev) {
+      if (typeof ev.t !== "number" || n < 2) return;
+      var px = (ev.t - s.t[0]) / (s.t[n - 1] - s.t[0] || 1) * d.w;
+      ctx.fillStyle = GPDraw.css("--ink3");
+      ctx.fillRect(px - 0.5, 0, 1, d.h);
+    });
+    GPDraw.cursor(ctx, GPStore.cursorIndex(), n, 0, 0, d.w, d.h, GPDraw.css("--ink"));
+  }
+
+  // ---- drag-drop replay ----------------------------------------------------
+  function wireDrop() {
+    document.body.addEventListener("dragover", function (ev) { ev.preventDefault(); });
+    document.body.addEventListener("drop", function (ev) {
+      ev.preventDefault();
+      var f = ev.dataTransfer.files && ev.dataTransfer.files[0];
+      if (!f) return;
+      f.text().then(function (text) {
+        var session = JSON.parse(text);
+        if (es) { es.close(); es = null; }
+        GPStore.applyStatus({ state: "replay" });
+        GPStore.applyFindings(null);
+        GPStore.initSession(session, "replay");
+        GPStore.applyFindings(GPStore.deriveVerdict(GPStore.state.session));
+      }).catch(function () {
+        GPStore.applyStatus({ state: "not a session file" });
+      });
+    });
+  }
+
+  // ---- render --------------------------------------------------------------
+  function onState(state) {
+    renderStrip(state);
+    renderVerdictLine(state);
+    renderScrubber(state);
+    if (state.session) {
+      if (activeTab === "pipeline") { GPPipeline.render(state); GPInspector.render(state); }
+      else if (activeTab === "timeline") GPTimeline.render(state);
+      else if (activeTab === "system") GPSystem.render(state);
+      else GPAnalysis.render(state);
+    }
+    renderLegend(state);
+  }
+
+  function renderStrip(state) {
+    var st = state.status.state || "…";
+    var dot = document.getElementById("statusdot");
+    dot.className = "dot " + (st === "capturing" ? "capturing" : st === "disconnected" ? "err" : "done");
+    document.getElementById("statustext").textContent = st;
+    var s = state.session;
+    var n = s ? s.series.t.length : 0;
+    var elapsed = s && n ? s.series.t[n - 1] + (s.series.window_ms || 250) / 1000
+                : (s && s.session.duration_s) || 0;
+    document.getElementById("elapsed").textContent = n || s ? GPDraw.fmtClock(elapsed) : "";
+    var tgt = (s && s.target) || {};
+    var bits = [];
+    if (tgt.gstreamer) bits.push("GStreamer " + tgt.gstreamer);
+    if (tgt.board) bits.push(tgt.board);
+    else if (tgt.platform && tgt.platform !== "generic") bits.push(tgt.platform);
+    document.getElementById("targetinfo").textContent = bits.join(" · ");
+    var parse = (s && s.session.parse) || {};
+    var bad = (parse.unparsed || 0) + (parse.errors || 0);
+    document.getElementById("parseinfo").textContent = bad > 0 ? bad + " unparsed lines" : "";
+    var liveCapture = st === "capturing";
+    document.getElementById("btn-stop").hidden = !liveCapture;
+    document.getElementById("btn-mark").hidden = !liveCapture;
+    var liveBtn = document.getElementById("btn-live");
+    liveBtn.classList.toggle("on", state.cursor.live);
+    liveBtn.textContent = liveCapture ? "LIVE" : "END";
+    var i = GPStore.cursorIndex();
+    document.getElementById("scrubtime").textContent =
+      s && i >= 0 ? "t = " + GPDraw.fmt(s.series.t[i], " s") : "";
+  }
+
+  function renderVerdictLine(state) {
+    var el = document.getElementById("verdictline");
+    var v = state.verdict;
+    if (!v) { el.textContent = "waiting for the first verdict…"; return; }
+    el.replaceChildren();
+    var b = document.createElement("b");
+    var top = (v.findings || []).filter(function (f) { return f.rule !== "HOT" && f.rule !== "OK"; })[0];
+    b.textContent = top ? "top finding: " + top.rule + " — " + top.title : "";
+    el.appendChild(document.createTextNode(v.header + (top ? "   ·   " : "")));
+    el.appendChild(b);
+    var badge = document.querySelector('[data-tab="analysis"] .badge');
+    var nf = (v.findings || []).filter(function (f) { return f.rule !== "HOT" && f.rule !== "OK"; }).length;
+    var tab = document.querySelector('[data-tab="analysis"]');
+    tab.replaceChildren(document.createTextNode("Analysis" + (nf ? " " : "")));
+    if (nf) { var sp = document.createElement("span"); sp.className = "badge"; sp.textContent = String(nf); tab.appendChild(sp); }
+  }
+
+  function renderLegend(state) {
+    var el = document.getElementById("legend");
+    if (activeTab !== "pipeline") { el.textContent = ""; return; }
+    el.replaceChildren();
+    [["--nvmm", "NVMM (hardware memory)"], ["--dmabuf", "dmabuf"], ["--sysmem", "system memory"],
+     ["--unknown", "unknown (dashed)"]].forEach(function (pair) {
+      var sw = document.createElement("span");
+      sw.className = "sw"; sw.style.background = GPDraw.css(pair[0]);
+      el.appendChild(sw);
+      el.appendChild(document.createTextNode(pair[1]));
+    });
+    el.appendChild(document.createTextNode("  ·  a gray gap in a green path is a copy — edge width = bytes/s, dash speed = fps"));
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+  else boot();
+
+  return { showTab: showTab };
+})();
+</script>
+</body>
+</html>
