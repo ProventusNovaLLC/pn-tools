@@ -1,0 +1,3 @@
+# ZC: a sysmem island (videoconvert) inside an otherwise-NVMM path = zero-copy break.
+BAD='videotestsrc is-live=true ! video/x-raw,format=NV12,width=1920,height=1080,framerate=30/1 ! nvvidconv ! video/x-raw(memory:NVMM) ! nvvidconv ! video/x-raw,format=I420,width=1280,height=720 ! videoconvert ! video/x-raw,format=NV12 ! nvvidconv ! video/x-raw(memory:NVMM) ! nvv4l2h264enc ! h264parse ! fakesink sync=false'
+GOOD='videotestsrc is-live=true ! video/x-raw,format=NV12,width=1920,height=1080,framerate=30/1 ! nvvidconv ! video/x-raw(memory:NVMM),width=1280,height=720 ! nvv4l2h264enc ! h264parse ! fakesink sync=false'
