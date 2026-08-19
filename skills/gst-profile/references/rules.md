@@ -120,8 +120,8 @@ link it walks the link graph upstream and downstream (via
 `Analysis.links`, following `src_el`/`sink_el`) looking for the nearest
 element on each side that sits across an NVMM- or dmabuf-memory link
 (`link.memory in ("nvmm", "dmabuf")`) — those two elements bound the
-"island." Also reads the bounding element's `cpu_pct`
-(`series.elements.<id>.cpu_pct`, max).
+"island." Also reads the sysmem link's own sink element's `cpu_pct` (or
+its source's, as fallback) (`series.elements.<id>.cpu_pct`, max).
 
 **Emits:** `{"sysmem_link": <link id>, "hw_upstream": <element id>,
 "hw_downstream": <element id>, "offender_cpu_pct": <float|null>}` — from
@@ -198,7 +198,8 @@ fixture: `{"heavy_element": "nvv4l2h264enc0", "queues_present": 0}`.
 **Why it matters:** "Without a queue the source, conversion and encode
 share a single streaming thread, so any stall in one stalls all."
 
-**Fix:** `fix_text`: "Insert a queue upstream of `<heavy_element>`."
+**Fix:** `fix_text`: "Insert a queue upstream of `<heavy_element>` to give
+it its own thread."
 `fix_patch`: `{"kind": "insert-element", "before": <heavy_element>,
 "element": "queue"}`.
 

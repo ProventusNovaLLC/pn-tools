@@ -150,7 +150,7 @@ Verdict:
 
 ```
 gst-profile verdict
-  pipeline latency p95 34.1 ms (frame period 33.3 ms)  ·  where the time goes: videoconvert0 61%  ·  nvv4l2h264enc0 9%  ·  nvarguscamerasrc0 6%
+  pipeline latency p95 34.1 ms (frame period 33.3 ms)  ·  where the time goes: videoconvert0 61% · nvv4l2h264enc0 9% · nvarguscamerasrc0 6%
 
   !![high  ] ZC    videoconvert0 breaks zero-copy: NVMM -> sysmem
           why: nvarguscamerasrc0 outputs NVMM; videoconvert0 is the first sysmem element downstream, forcing a copy off the hardware buffer path
