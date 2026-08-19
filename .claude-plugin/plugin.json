@@ -1,7 +1,7 @@
 {
   "name": "pn-tools",
-  "description": "Embedded camera / BSP debugging skills for NVIDIA Jetson and MediaTek Genio — bench methods as interactive decision trees.",
-  "version": "0.1.0",
+  "description": "Embedded camera / BSP debugging and GStreamer pipeline profiling skills for NVIDIA Jetson and MediaTek Genio — bench methods as interactive decision trees.",
+  "version": "0.2.0",
   "author": {
     "name": "ProventusNova",
     "url": "https://proventusnova.com"

@@ -54,7 +54,8 @@ own pipeline or shell already set for these is not preserved during capture.
 
 `schema: gst-profile/1` — graph (elements, links with memory domain), series
 (columnar, 250 ms windows: per-element proc p50/p95 + cpu, per-link fps/bytes/
-stalled, pipeline latency, system), events, findings (empty — the verdict is computed on demand, not stored).
+stalled, pipeline latency, system), events, findings (the ranked verdict,
+computed and written into the session at save time).
 
 Session JSON and shareable reports may contain pipeline details from your own
 pipeline — `location=` properties, URIs, credentials embedded in a pipeline
