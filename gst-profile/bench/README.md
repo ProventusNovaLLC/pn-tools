@@ -55,6 +55,16 @@ GStreamer 1.20.3 — recorded in `verified_on` as **`orin-nx-jp6-r36.4`**.
 Run with the board's other camera/encode workloads quiesced, so their CPU load
 does not pollute the per-element proc-time and CPU-share measurements.
 
+## Overhead
+
+Measured on `orin-nx-jp6-r36.4`, a 1080p30 all-hardware path
+(`videotestsrc ! nvvidconv ! NVMM ! queue ! nvv4l2h264enc ! h264parse !
+fakesink`) run flat-out (`num-buffers=1800`, no `is-live` cap): **96.9 fps bare
+vs 92.0 fps under `gst-profile run --no-ui` — about a 5% throughput cost** for
+the full tracer set (per-element latency + stats + /proc sampling). Verified as
+2026-08-19. `--lite` (latency tracer only, no `stats`) trims it further for
+extreme pipelines.
+
 ## What this board can and cannot verify
 
 Bench-verifiable here (CPU / memory-domain / static evidence):

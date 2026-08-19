@@ -1,6 +1,6 @@
 # gst-profile — where does the time go in your GStreamer pipeline?
 
-**Status: in development (rules + verdict + live view; bench-verification and the public Skill still to come). Not released.**
+**Status: in development. Core rules bench-verified on NVIDIA Jetson (Orin NX / JetPack 6); the public Skill and release are still to come. Not yet released.**
 
 `gst-profile` wraps your pipeline (or your own GStreamer app) in GStreamer's
 built-in tracers, aggregates what flows, and tells you where the time and the
@@ -19,7 +19,11 @@ gst-profile analyze trace.log.gz --dot pipeline.dot     # offline, from a GST_DE
 
 The tool produces a **ranked verdict**: a concise summary of where CPU and time go in the pipeline, with findings organized by severity and severity-matched fixes. `run` and `wrap` open a **live view** (a live panel at `http://<host>:8790`) that streams metrics as the capture runs; use `--no-ui` for headless operation or `--hold N` to keep the view running for N seconds after capture completes. For recorded sessions, `analyze --serve` opens the live view on a stored capture, and `report <session> -o out.html` renders a self-contained static report you can review offline or share. The live server binds all interfaces by default so you can view it from another machine on the LAN; pass `--host 127.0.0.1` to restrict it to localhost. (`/session.json` and the stop/mark control are exposed while serving.)
 
-**Findings are marked *heuristic* until verified on target hardware** — a later version will promote high-confidence rules once they pass golden-pipeline baselines on NVIDIA Jetson and other common platforms.
+**Severity is earned by bench verification.** A diagnostic rule only reports `high`/`medium` (and trips exit code 1) once it has passed a golden bad/good pipeline pair on named hardware — the bad pipeline must produce exactly that finding and its clean twin must not (see `bench/`). As of the Orin NX / JetPack 6 (L4T R36.4.3) bench pass, **ZC** (zero-copy break), **SW** (software element where a hardware one exists) and **QUEUE** (no thread boundary before the encoder) are verified and report at full severity, tagged `verified_on: orin-nx-jp6-r36.4`. Every other diagnostic still reports `info` + *heuristic* until it earns its own bench pass.
+
+Two honest limits worth knowing: **SYNC** (`sync=true` on a live sink) can't yet be detected from a `run`-mode capture — `sync=true` is the `GstBaseSink` default, so a dot dump never records it as a set property; that needs a rule-logic revision, so SYNC stays heuristic. And on L4T R36, `tegrastats` reports no per-engine load for NVENC/NVDEC/VIC (only GPU, CPU, thermals, power) — that utilization number isn't exposed anywhere on the platform — so the **VIC**/**HW** rules and the encoder-engine signal stay heuristic, and the System tab shows "not available on this board" for those lanes.
+
+**Overhead:** on the Orin NX, a 1080p30 all-hardware path runs at ~96.9 fps bare vs ~92.0 fps under the profiler — about a 5% throughput cost for the full tracer set. `--lite` trims it for extreme pipelines.
 
 ### Live panel
 
