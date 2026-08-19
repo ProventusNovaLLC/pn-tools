@@ -15,6 +15,10 @@ def run_cli(argv):
 
 class AnalyzeVerdictTest(unittest.TestCase):
     def setUp(self):
+        _saved = dict(rules.VERIFIED_RULES)         # restore the real bench-verified default after
+        def _restore():
+            rules.VERIFIED_RULES.clear(); rules.VERIFIED_RULES.update(_saved)
+        self.addCleanup(_restore)
         rules.VERIFIED_RULES.clear()
 
     def test_analyze_prints_verdict_and_exits_clean_when_all_info(self):

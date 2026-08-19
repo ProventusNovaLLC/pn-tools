@@ -68,7 +68,7 @@ class CliTest(unittest.TestCase):
         # gst-launch stands in for "your binary": wrap mode must not depend on dot dumps for topology or caps
         code = main(["wrap", "--duration", "3s", "--out", out, "--no-ui", "--",
                      "gst-launch-1.0", "-q", "videotestsrc", "num-buffers=45", "!", "video/x-raw,width=320,height=240,framerate=30/1",
-                     "!", "videoconvert", "!", "video/x-raw,format=NV12", "!", "fakesink", "sync=false"])
+                     "!", "videoconvert", "!", "video/x-raw,format=NV12", "!", "queue", "!", "fakesink", "sync=false"])
         self.assertEqual(code, 0)
         with open(out) as fh:
             d = json.load(fh)
@@ -106,7 +106,7 @@ class CliTest(unittest.TestCase):
     @unittest.skipUnless(shutil.which("gst-launch-1.0"), "GStreamer not installed")
     def test_duration_that_stops_a_healthy_child_is_clean(self):
         out = os.path.join(tempfile.mkdtemp(), "healthy.json")
-        code = main(["run", "videotestsrc is-live=true ! fakesink sync=false",
+        code = main(["run", "videotestsrc is-live=true ! queue ! fakesink sync=false",
                      "--duration", "2s", "--out", out, "--no-ui"])
         self.assertEqual(code, 0)
 

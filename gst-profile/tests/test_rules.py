@@ -11,7 +11,11 @@ def load(name):
 
 class RulesTest(unittest.TestCase):
     def setUp(self):
-        rules.VERIFIED_RULES.clear()          # Plan 2 default: nothing bench-verified
+        _saved = dict(rules.VERIFIED_RULES)   # restore the real bench-verified default after each test
+        def _restore():
+            rules.VERIFIED_RULES.clear(); rules.VERIFIED_RULES.update(_saved)
+        self.addCleanup(_restore)
+        rules.VERIFIED_RULES.clear()          # isolate the gate: nothing verified inside this class
 
     def fired(self, session):
         return {f.rule for f in rules.run_rules(analysis.build(session))}

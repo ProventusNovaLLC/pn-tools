@@ -36,9 +36,18 @@ class Finding:
     rank: int = 0
 
 
-# Rule ids bench-verified on named hardware (Plan 4 adds to this as golden pipelines pass on the Orin).
+# Rule ids bench-verified on named hardware (golden bad/good pipeline pairs; see bench/).
 # Until a rule id is in here, its high/medium findings are emitted as `info` + heuristic.
-VERIFIED_RULES: Dict[str, List[str]] = {}
+# Verified 2026-08-19 on an Orin NX / L4T R36.4.3 (JP6), GStreamer 1.20.3: each bad pipeline
+# yielded exactly this finding and its good twin came back clean. SYNC and STALL are NOT here:
+# SYNC's sync=true is invisible to a run-mode dot dump (it is the GstBaseSink param-spec default,
+# so it is never recorded as a non-default prop) — needs a rule-logic fix; STALL did not reproduce
+# cleanly from a drop-from-start pipeline. Both stay honest heuristics.
+VERIFIED_RULES: Dict[str, List[str]] = {
+    "ZC": ["orin-nx-jp6-r36.4"],
+    "SW": ["orin-nx-jp6-r36.4"],
+    "QUEUE": ["orin-nx-jp6-r36.4"],
+}
 
 def _gate(rule_id: str, sev: str):
     """Return (severity, heuristic, verified_on). high/medium -> info until the rule is bench-verified."""

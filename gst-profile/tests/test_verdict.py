@@ -11,6 +11,10 @@ def load(name):
 
 class VerdictTest(unittest.TestCase):
     def setUp(self):
+        _saved = dict(rules.VERIFIED_RULES)         # restore the real bench-verified default after
+        def _restore():
+            rules.VERIFIED_RULES.clear(); rules.VERIFIED_RULES.update(_saved)
+        self.addCleanup(_restore)
         rules.VERIFIED_RULES.clear()
 
     def test_header_has_latency_and_hot(self):
