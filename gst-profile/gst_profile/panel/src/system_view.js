@@ -43,7 +43,7 @@ var GPSystem = (function () {
 
     if (!n || !lanes.length) {
       ctx.fillStyle = ink3; ctx.font = "13px system-ui";
-      ctx.fillText("no system series on this capture — see `gst-profile check`", 16, 26);
+      ctx.fillText("no system series on this capture: see `gst-profile check`", 16, 26);
       return;
     }
 
@@ -56,7 +56,7 @@ var GPSystem = (function () {
       ctx.beginPath(); ctx.moveTo(GUTTER, y + LANE_H - 6.5); ctx.lineTo(GUTTER + plotW, y + LANE_H - 6.5); ctx.stroke();
       if (!lane.avail) {
         ctx.fillStyle = ink3; ctx.font = "11px system-ui";
-        ctx.fillText("not available on this board — see `gst-profile check`", GUTTER + 6, y + 14);
+        ctx.fillText("not available on this board: see `gst-profile check`", GUTTER + 6, y + 14);
         return;
       }
       var i = GPStore.cursorIndex();

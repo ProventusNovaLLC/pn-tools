@@ -8,7 +8,7 @@
 <title>gst-profile</title>
 <style>
 /* gst-profile panel. Instrument chrome: quiet surfaces, monospace data, one saturated
-   identity — vendor green on the hardware path. Colors are semantic tokens; the
+   identity: vendor green on the hardware path. Colors are semantic tokens; the
    memory-domain set (#76B900 / #8f6af2 / #8b93a1) is CVD-validated on both surfaces. */
 :root {
   --bg: #0e1116; --surface: #161b22; --surface2: #1c232d; --border: #262d38;
@@ -260,7 +260,7 @@ main { flex: 1; min-height: 0; display: flex; }
 <script>
 /* Session store: one client-side copy of the gst-profile/1 session document, built
    from an embedded session (report), a fetched snapshot (live/replay) and SSE frames.
-   Pure data — no DOM. Views subscribe and re-read on notify. */
+   Pure data: no DOM. Views subscribe and re-read on notify. */
 var GPStore = (function () {
   var ELEMENT_COLS = ["proc_ms_p50", "proc_ms_p95", "cpu_pct", "queue_level", "buffers"];
   var LINK_COLS = ["fps", "bytes_s", "stalled"];
@@ -331,7 +331,7 @@ var GPStore = (function () {
     notify();
   }
 
-  /* tick = {t, rows, row:{elements:{}, links:{}, pipeline:{}, system:{}}} — append one window.
+  /* tick = {t, rows, row:{elements:{}, links:{}, pipeline:{}, system:{}}}, append one window.
      Frames older than what we already hold (reconnect replays) are dropped. */
   function applyTick(tick) {
     if (!state.session) state.session = normalize({});
@@ -439,12 +439,12 @@ var GPStore = (function () {
 if (typeof module !== "undefined") module.exports = GPStore;
 /* Layered left-to-right graph layout for pipeline graphs (Sugiyama-lite).
    The graph may hold several disconnected pipelines (e.g. an app that runs many
-   gst_parse_launch pipelines bridged by interpipe/appsink — invisible to pad
+   gst_parse_launch pipelines bridged by interpipe/appsink, invisible to pad
    topology). Each weakly-connected component is laid out on its own: longest-path
    layering, barycenter ordering, then neighbour-barycenter vertical positioning so
    a node sits centered on the elements it actually connects to. Components are then
    stacked vertically, each below the previous one. Columns (x) are shared across all
-   components so every source lines up on the left. Pure function of the graph — no DOM. */
+   components so every source lines up on the left. Pure function of the graph: no DOM. */
 var GPLayout = (function () {
   var NODE_H = 46, H_GAP = 64, V_GAP = 20, COMPONENT_GAP = 44, CHAR_W = 7.4;
 
@@ -466,7 +466,7 @@ var GPLayout = (function () {
       return byId[srcEl(l)] && byId[sinkEl(l)];
     });
 
-    // directed adjacency (for layering) — self-loops ignored
+    // directed adjacency (for layering); self-loops ignored
     var out = {}, inn = {};
     els.forEach(function (e) { out[e.id] = []; inn[e.id] = []; });
     links.forEach(function (l) {
@@ -516,7 +516,7 @@ var GPLayout = (function () {
     // Order top→bottom by role, so producers sit above the stages they feed:
     //   tier 0 = capture pipelines (contain a real hardware/live source),
     //   tier 1 = derived pipelines (fed only by an in-process bridge: interpipe/app/proxy),
-    //   tier 2 = single-node / unlinked components (idle stages) — sink to the bottom.
+    //   tier 2 = single-node / unlinked components (idle stages), sink to the bottom.
     // Within a tier, order by the smallest source id so per-camera order stays stable.
     function isBridgeSrc(f) { return /^(interpipesrc|appsrc|proxysrc)/.test(String(f || "").toLowerCase()); }
     function compKey(comp) {
@@ -752,7 +752,7 @@ var GPPipeline = (function () {
   var edgeEls = {}, nodeEls = {}, heatEls = {}, procEls = {};
   var dashOffsets = {}, lastFrame = 0, animating = false, showIdle = false;
   var DASH_PERIOD = 12;                    // px per dash cycle ("7 5")
-  var SPEED = 0.55;                        // px/s of drift per fps — 30 fps ≈ 16.5 px/s
+  var SPEED = 0.55;                        // px/s of drift per fps: 30 fps ≈ 16.5 px/s
 
   function el(tag, cls) {
     var e = document.createElementNS(NS, tag);
@@ -781,7 +781,7 @@ var GPPipeline = (function () {
     empty.hidden = !!hasNodes;
     if (!hasNodes) { svg.replaceChildren(); layoutCache = { key: "", layout: null }; renderIdleToggle(0); return; }
 
-    // Idle stages (dormant whole capture — see idleElements) are hidden by default so
+    // Idle stages (dormant whole capture, see idleElements) are hidden by default so
     // the graph shows only pipelines that carried data. The toggle reveals them (dimmed).
     var active = idleElements(state);
     var idleIds = (graph.elements || []).filter(function (e) { return !e.is_bin && !active[e.id]; }).map(function (e) { return e.id; });
@@ -896,7 +896,7 @@ var GPPipeline = (function () {
   function fmtMs(v) { return (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + " ms"; }
 
   /* An element is idle when no link touching it ever carried a buffer in this session
-     (isolated nodes, or a pipeline dormant the whole capture — e.g. a recorder waiting
+     (isolated nodes, or a pipeline dormant the whole capture, e.g. a recorder waiting
      for its trigger). Dimmed + tagged so it reads as "waiting", not "broken". */
   function idleElements(state) {
     var links = state.session.series.links, active = {};
@@ -952,7 +952,7 @@ var GPPipeline = (function () {
     Object.keys(edgeEls).forEach(function (id) {
       edgeEls[id].classList.remove("f-high", "f-medium", "f-info");
     });
-    // high/medium always paint; info (heuristic) findings only when focused or top —
+    // high/medium always paint; info (heuristic) findings only when focused or top:
     // a healthy pipeline full of info findings must not read as a christmas tree
     findings.slice().reverse().forEach(function (f) {          // reversed: rank 1 paints last, wins
       if (f.severity === "info" && f !== primary) return;
@@ -1169,7 +1169,7 @@ var GPInspector = (function () {
   return { render: render };
 })();
 if (typeof module !== "undefined") module.exports = GPInspector;
-/* Timeline tab: stacked lanes on the shared time axis — pipeline latency band first,
+/* Timeline tab: stacked lanes on the shared time axis: pipeline latency band first,
    then element proc-time lanes hottest-first (toggleable), then link fps lanes.
    Crosshair hover reads every lane at that instant; events are vertical markers. */
 var GPTimeline = (function () {
@@ -1244,7 +1244,7 @@ var GPTimeline = (function () {
 
     if (!n || !ls.length) {
       ctx.fillStyle = ink3; ctx.font = "13px system-ui";
-      ctx.fillText("no series yet — waiting for the first window", 16, 26);
+      ctx.fillText("no series yet, waiting for the first window", 16, 26);
       return;
     }
 
@@ -1394,7 +1394,7 @@ var GPSystem = (function () {
 
     if (!n || !lanes.length) {
       ctx.fillStyle = ink3; ctx.font = "13px system-ui";
-      ctx.fillText("no system series on this capture — see `gst-profile check`", 16, 26);
+      ctx.fillText("no system series on this capture: see `gst-profile check`", 16, 26);
       return;
     }
 
@@ -1407,7 +1407,7 @@ var GPSystem = (function () {
       ctx.beginPath(); ctx.moveTo(GUTTER, y + LANE_H - 6.5); ctx.lineTo(GUTTER + plotW, y + LANE_H - 6.5); ctx.stroke();
       if (!lane.avail) {
         ctx.fillStyle = ink3; ctx.font = "11px system-ui";
-        ctx.fillText("not available on this board — see `gst-profile check`", GUTTER + 6, y + 14);
+        ctx.fillText("not available on this board: see `gst-profile check`", GUTTER + 6, y + 14);
         return;
       }
       var i = GPStore.cursorIndex();
@@ -1589,7 +1589,7 @@ var GPAnalysis = (function () {
     var configs = Object.keys(verified);
     foot.appendChild(mk("span", "", configs.length
       ? "rules verified on: " + configs.join(", ") + " · "
-      : "no rules bench-verified on hardware yet — diagnostics above are heuristic · "));
+      : "no rules bench-verified on hardware yet; diagnostics above are heuristic · "));
     var scope = verdict.scope || ((verdict.findings || [])[0] || {}).ref;
     if (scope && /^https?:\/\//.test(scope)) {
       var a = document.createElement("a");
@@ -1850,7 +1850,7 @@ var GPApp = (function () {
     el.replaceChildren();
     var b = document.createElement("b");
     var top = (v.findings || []).filter(function (f) { return f.rule !== "HOT" && f.rule !== "OK"; })[0];
-    b.textContent = top ? "top finding: " + top.rule + " — " + top.title : "";
+    b.textContent = top ? "top finding: " + top.rule + " · " + top.title : "";
     el.appendChild(document.createTextNode(v.header + (top ? "   ·   " : "")));
     el.appendChild(b);
     var badge = document.querySelector('[data-tab="analysis"] .badge');
@@ -1871,7 +1871,7 @@ var GPApp = (function () {
       el.appendChild(sw);
       el.appendChild(document.createTextNode(pair[1]));
     });
-    el.appendChild(document.createTextNode("  ·  a gray gap in a green path is a copy — edge width = bytes/s, dash speed = fps"));
+    el.appendChild(document.createTextNode("  ·  a gray gap in a green path is a copy; edge width = bytes/s, dash speed = fps"));
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);

@@ -1,11 +1,11 @@
 /* Layered left-to-right graph layout for pipeline graphs (Sugiyama-lite).
    The graph may hold several disconnected pipelines (e.g. an app that runs many
-   gst_parse_launch pipelines bridged by interpipe/appsink — invisible to pad
+   gst_parse_launch pipelines bridged by interpipe/appsink, invisible to pad
    topology). Each weakly-connected component is laid out on its own: longest-path
    layering, barycenter ordering, then neighbour-barycenter vertical positioning so
    a node sits centered on the elements it actually connects to. Components are then
    stacked vertically, each below the previous one. Columns (x) are shared across all
-   components so every source lines up on the left. Pure function of the graph — no DOM. */
+   components so every source lines up on the left. Pure function of the graph: no DOM. */
 var GPLayout = (function () {
   var NODE_H = 46, H_GAP = 64, V_GAP = 20, COMPONENT_GAP = 44, CHAR_W = 7.4;
 
@@ -27,7 +27,7 @@ var GPLayout = (function () {
       return byId[srcEl(l)] && byId[sinkEl(l)];
     });
 
-    // directed adjacency (for layering) — self-loops ignored
+    // directed adjacency (for layering); self-loops ignored
     var out = {}, inn = {};
     els.forEach(function (e) { out[e.id] = []; inn[e.id] = []; });
     links.forEach(function (l) {
@@ -77,7 +77,7 @@ var GPLayout = (function () {
     // Order top→bottom by role, so producers sit above the stages they feed:
     //   tier 0 = capture pipelines (contain a real hardware/live source),
     //   tier 1 = derived pipelines (fed only by an in-process bridge: interpipe/app/proxy),
-    //   tier 2 = single-node / unlinked components (idle stages) — sink to the bottom.
+    //   tier 2 = single-node / unlinked components (idle stages), sink to the bottom.
     // Within a tier, order by the smallest source id so per-camera order stays stable.
     function isBridgeSrc(f) { return /^(interpipesrc|appsrc|proxysrc)/.test(String(f || "").toLowerCase()); }
     function compKey(comp) {

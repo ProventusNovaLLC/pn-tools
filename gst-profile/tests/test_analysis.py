@@ -47,7 +47,7 @@ class AnalysisTest(unittest.TestCase):
     def test_healthy_software_fixture_builds(self):
         a = analysis.build(load("software-healthy.json"))
         self.assertEqual(a.platform, "generic")
-        # pipeline0 is a bin — real_elements() and hot_share() must exclude it
+        # pipeline0 is a bin: real_elements() and hot_share() must exclude it
         self.assertIn("pipeline0", a.elements)
         self.assertTrue(a.elements["pipeline0"].is_bin)
         self.assertNotIn("pipeline0", {e.id for e in a.real_elements()})

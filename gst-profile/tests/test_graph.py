@@ -36,7 +36,7 @@ class GraphTest(unittest.TestCase):
         self.assertEqual(g.sinks(), ["enc"])
         # buffer seen from the receiving side resolves to the same link
         self.assertEqual(g.link_for_stats_buffer(rec("buffer", **{"pad-ix": 1, "peer-pad-ix": 0})), "src:src->enc:sink")
-        # repeat records for an established link — from either side — do not report a topology change
+        # repeat records for an established link, from either side, do not report a topology change
         self.assertFalse(g.ingest_record(rec("buffer", **{"pad-ix": 0, "peer-pad-ix": 1})))
         self.assertFalse(g.ingest_record(rec("buffer", **{"pad-ix": 1, "peer-pad-ix": 0})))
         self.assertEqual(len(g.links), 1)

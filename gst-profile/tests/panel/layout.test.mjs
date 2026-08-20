@@ -21,7 +21,7 @@ test("a chain lays out left to right, one node per layer", () => {
   assert.equal(L.edges.length, 2);
 });
 
-test("a linear chain is drawn straight — every node shares one y", () => {
+test("a linear chain is drawn straight; every node shares one y", () => {
   const g = {
     elements: [el("a0"), el("b0"), el("c0"), el("d0")],
     links: [link("a0:src", "b0:sink"), link("b0:src", "c0:sink"), link("c0:src", "d0:sink")],

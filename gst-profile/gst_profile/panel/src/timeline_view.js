@@ -1,4 +1,4 @@
-/* Timeline tab: stacked lanes on the shared time axis — pipeline latency band first,
+/* Timeline tab: stacked lanes on the shared time axis: pipeline latency band first,
    then element proc-time lanes hottest-first (toggleable), then link fps lanes.
    Crosshair hover reads every lane at that instant; events are vertical markers. */
 var GPTimeline = (function () {
@@ -73,7 +73,7 @@ var GPTimeline = (function () {
 
     if (!n || !ls.length) {
       ctx.fillStyle = ink3; ctx.font = "13px system-ui";
-      ctx.fillText("no series yet — waiting for the first window", 16, 26);
+      ctx.fillText("no series yet, waiting for the first window", 16, 26);
       return;
     }
 
