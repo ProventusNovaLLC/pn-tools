@@ -35,7 +35,7 @@ class SeriesTest(unittest.TestCase):
         a = Aggregator()
         a.ingest(rec("buffer", ts=0, **{"buffer-size": 1}), link_id="l")
         a.close_window(2 * W)                                 # window 0 (flowing) and window 1 (nothing)
-        # window 1 carries no buffers on ANY link (e.g. teardown quiet at the capture's last window) —
+        # window 1 carries no buffers on ANY link (e.g. teardown quiet at the capture's last window):
         # that's the whole pipeline going quiet, not this one link stalling, so it must read False too.
         self.assertEqual([r.links["l"].stalled for r in a.rows], [False, False])
         a.close_window(10**18)                                # absurd jump must be bounded and recorded
@@ -44,7 +44,7 @@ class SeriesTest(unittest.TestCase):
 
     def test_single_link_stall_while_pipeline_still_flows(self):
         a = Aggregator()
-        # two links share a window; one keeps flowing, the other goes quiet in the SAME window —
+        # two links share a window; one keeps flowing, the other goes quiet in the SAME window:
         # that is a genuine single-link stall and must still report True.
         a.ingest(rec("buffer", ts=0, **{"buffer-size": 1}), link_id="flowing")
         a.ingest(rec("buffer", ts=0, **{"buffer-size": 1}), link_id="quiet")

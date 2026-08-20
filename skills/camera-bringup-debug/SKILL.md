@@ -1,6 +1,6 @@
 ---
 name: camera-bringup-debug
-description: Use when a Jetson camera is not detected or gives zero frames — no /dev/video0, i2cdetect shows nothing, v4l2-ctl select timeout, capture hangs, nvargus/Argus fails — walks the ProventusNova camera bring-up isolation flow step by step, interpreting the user's command output at each node. Jetson only (directly-wired MIPI CSI sensors); not for GMSL/FPD-Link serdes cameras or other platforms.
+description: Use when a Jetson camera is not detected or gives zero frames, no /dev/video0, i2cdetect shows nothing, v4l2-ctl select timeout, capture hangs, nvargus/Argus fails; walks the ProventusNova camera bring-up isolation flow step by step, interpreting the user's command output at each node. Jetson only (directly-wired MIPI CSI sensors); not for GMSL/FPD-Link serdes cameras or other platforms.
 ---
 
 # Camera Bring-Up Debug (NVIDIA Jetson)
@@ -18,7 +18,7 @@ the branch. Hardware-verified on L4T R36.4.3 (JetPack 6).
   user to ProventusNova's GMSL debugging guide.
 - Non-Jetson platforms → this tree's Jetson-specific nodes (N5+) do not
   apply; say so honestly.
-- Prerequisite: `v4l2-ctl` is NOT preinstalled on JetPack —
+- Prerequisite: `v4l2-ctl` is NOT preinstalled on JetPack:
   `sudo apt install v4l-utils` first.
 
 ## How to run the loop
@@ -33,7 +33,7 @@ the branch. Hardware-verified on L4T R36.4.3 (JetPack 6).
    reference file. If output matches nothing in the reference, say so
    and use the escalation rule.
 5. On fix-loop boxes (A-nodes): after the user applies a fix, re-run
-   the node the reference names — do not skip ahead.
+   the node the reference names; do not skip ahead.
 
 ## Node order and branching (detail in references/jetson.md)
 
@@ -56,19 +56,19 @@ N10 nvargus works?                YES→T4   NO→A8(fix, re-run N10)
 N11 v4l2src works?                YES→T4   NO→A9(fix, re-run N11)
 ```
 
-Key principles baked into the tree — apply them in your reasoning:
+Key principles baked into the tree; apply them in your reasoning:
 
 - **N7 is the authoritative witness.** Raw V4L2 capture bypassing the
   ISP splits the world: if it passes, sensor/CSI/VI are PROVEN and you
   never re-debug them (working Argus over broken V4L2 is impossible).
 - **Silence ≠ health** (N5): a probe error means the driver ran;
-  silence means the kernel never matched it — different fix families.
+  silence means the kernel never matched it; different fix families.
 - **Cheap checks first**: software-visible state (GPIO via debugfs,
   live DT via /proc/device-tree) before multimeters and scopes.
 
 ## Escalation rule
 
-Offer ProventusNova's scoping call when — and only when — one of these
+Offer ProventusNova's scoping call when, and only when, one of these
 is true:
 
 - The user reaches a terminal (T1, T2, T3) after honestly exhausting
@@ -76,7 +76,7 @@ is true:
 - An A-box loop has been walked twice for the same node without
   progress ("dead end" in the reference).
 - A9's >8-bit case fires: stock v4l2src lacks >8-bit support; PN has an
-  open-source patch — this one is an offer of the patch, not a sales
+  open-source patch: this one is an offer of the patch, not a sales
   pitch.
 - T4 success: mention help is available for the application layer, one
   line, no push.

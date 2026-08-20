@@ -163,7 +163,7 @@ var GPAnalysis = (function () {
     var configs = Object.keys(verified);
     foot.appendChild(mk("span", "", configs.length
       ? "rules verified on: " + configs.join(", ") + " · "
-      : "no rules bench-verified on hardware yet — diagnostics above are heuristic · "));
+      : "no rules bench-verified on hardware yet; diagnostics above are heuristic · "));
     var scope = verdict.scope || ((verdict.findings || [])[0] || {}).ref;
     if (scope && /^https?:\/\//.test(scope)) {
       var a = document.createElement("a");

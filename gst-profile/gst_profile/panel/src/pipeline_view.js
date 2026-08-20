@@ -8,7 +8,7 @@ var GPPipeline = (function () {
   var edgeEls = {}, nodeEls = {}, heatEls = {}, procEls = {};
   var dashOffsets = {}, lastFrame = 0, animating = false, showIdle = false;
   var DASH_PERIOD = 12;                    // px per dash cycle ("7 5")
-  var SPEED = 0.55;                        // px/s of drift per fps — 30 fps ≈ 16.5 px/s
+  var SPEED = 0.55;                        // px/s of drift per fps: 30 fps ≈ 16.5 px/s
 
   function el(tag, cls) {
     var e = document.createElementNS(NS, tag);
@@ -37,7 +37,7 @@ var GPPipeline = (function () {
     empty.hidden = !!hasNodes;
     if (!hasNodes) { svg.replaceChildren(); layoutCache = { key: "", layout: null }; renderIdleToggle(0); return; }
 
-    // Idle stages (dormant whole capture — see idleElements) are hidden by default so
+    // Idle stages (dormant whole capture, see idleElements) are hidden by default so
     // the graph shows only pipelines that carried data. The toggle reveals them (dimmed).
     var active = idleElements(state);
     var idleIds = (graph.elements || []).filter(function (e) { return !e.is_bin && !active[e.id]; }).map(function (e) { return e.id; });
@@ -152,7 +152,7 @@ var GPPipeline = (function () {
   function fmtMs(v) { return (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + " ms"; }
 
   /* An element is idle when no link touching it ever carried a buffer in this session
-     (isolated nodes, or a pipeline dormant the whole capture — e.g. a recorder waiting
+     (isolated nodes, or a pipeline dormant the whole capture, e.g. a recorder waiting
      for its trigger). Dimmed + tagged so it reads as "waiting", not "broken". */
   function idleElements(state) {
     var links = state.session.series.links, active = {};
@@ -208,7 +208,7 @@ var GPPipeline = (function () {
     Object.keys(edgeEls).forEach(function (id) {
       edgeEls[id].classList.remove("f-high", "f-medium", "f-info");
     });
-    // high/medium always paint; info (heuristic) findings only when focused or top —
+    // high/medium always paint; info (heuristic) findings only when focused or top:
     // a healthy pipeline full of info findings must not read as a christmas tree
     findings.slice().reverse().forEach(function (f) {          // reversed: rank 1 paints last, wins
       if (f.severity === "info" && f !== primary) return;

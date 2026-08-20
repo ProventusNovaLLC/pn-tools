@@ -94,7 +94,7 @@ class DotParseTest(unittest.TestCase):
 
     def test_bin_ghost_proxypad_edges_are_dropped(self):
         # a `( queue ! fakesink )` bin: the src->ghost edge and the internal ghost/proxypad chain
-        # must never surface as links — only the real queue0:src -> fakesink0:sink link should.
+        # must never surface as links: only the real queue0:src -> fakesink0:sink link should.
         g = parse_dot(MINI_BIN)
         self.assertEqual(len(g.links), 1)
         self.assertEqual((g.links[0].src_pad, g.links[0].sink_pad), ("queue0:src", "fakesink0:sink"))

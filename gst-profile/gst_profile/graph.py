@@ -18,7 +18,7 @@ def vendor_of(factory: str, platform: str = "generic") -> str:
     f = (factory or "").lower()
     if f.startswith("nv"):
         return "nvidia"
-    if f.startswith("omx") and platform == "jetson":     # gst-omx also exists on RPi/others — not NVIDIA-specific
+    if f.startswith("omx") and platform == "jetson":     # gst-omx also exists on RPi/others, not NVIDIA-specific
         return "nvidia"
     if f.startswith("mtk") or f.startswith("neuron"):
         return "mediatek"
@@ -52,7 +52,7 @@ class Link:
 
     def set_caps(self, caps_text: str, platform: str = "generic") -> bool:
         """Apply negotiated caps. Empty / ANY / EMPTY caps (e.g. from a dot dump taken before negotiation
-        or during teardown) never overwrite caps already known — returns False when ignored."""
+        or during teardown) never overwrite caps already known; returns False when ignored."""
         c = parse_caps(caps_text)
         if not c.media or c.media in ("ANY", "EMPTY", "NULL"):
             return False
@@ -111,7 +111,7 @@ class Graph:
 
     def set_pad_caps(self, sink_pad: str, caps: str) -> bool:
         """Caps event seen on a sink pad ("element:pad") -> apply to the link feeding it
-        (now, or when that link appears — negotiation happens before the first buffer)."""
+        (now, or when that link appears; negotiation happens before the first buffer)."""
         c = parse_caps(caps)
         if not c.media or c.media in ("ANY", "EMPTY", "NULL"):
             return False                                    # nothing negotiated yet; keep what we know

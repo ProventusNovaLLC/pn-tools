@@ -1,6 +1,6 @@
 /* Session store: one client-side copy of the gst-profile/1 session document, built
    from an embedded session (report), a fetched snapshot (live/replay) and SSE frames.
-   Pure data — no DOM. Views subscribe and re-read on notify. */
+   Pure data: no DOM. Views subscribe and re-read on notify. */
 var GPStore = (function () {
   var ELEMENT_COLS = ["proc_ms_p50", "proc_ms_p95", "cpu_pct", "queue_level", "buffers"];
   var LINK_COLS = ["fps", "bytes_s", "stalled"];
@@ -71,7 +71,7 @@ var GPStore = (function () {
     notify();
   }
 
-  /* tick = {t, rows, row:{elements:{}, links:{}, pipeline:{}, system:{}}} — append one window.
+  /* tick = {t, rows, row:{elements:{}, links:{}, pipeline:{}, system:{}}}, append one window.
      Frames older than what we already hold (reconnect replays) are dropped. */
   function applyTick(tick) {
     if (!state.session) state.session = normalize({});

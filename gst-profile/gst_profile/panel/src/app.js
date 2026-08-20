@@ -235,7 +235,7 @@ var GPApp = (function () {
     el.replaceChildren();
     var b = document.createElement("b");
     var top = (v.findings || []).filter(function (f) { return f.rule !== "HOT" && f.rule !== "OK"; })[0];
-    b.textContent = top ? "top finding: " + top.rule + " — " + top.title : "";
+    b.textContent = top ? "top finding: " + top.rule + " · " + top.title : "";
     el.appendChild(document.createTextNode(v.header + (top ? "   ·   " : "")));
     el.appendChild(b);
     var badge = document.querySelector('[data-tab="analysis"] .badge');
@@ -256,7 +256,7 @@ var GPApp = (function () {
       el.appendChild(sw);
       el.appendChild(document.createTextNode(pair[1]));
     });
-    el.appendChild(document.createTextNode("  ·  a gray gap in a green path is a copy — edge width = bytes/s, dash speed = fps"));
+    el.appendChild(document.createTextNode("  ·  a gray gap in a green path is a copy; edge width = bytes/s, dash speed = fps"));
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);

@@ -11,7 +11,7 @@ import threading
 from typing import Dict, Optional
 
 _CPU = re.compile(r"CPU \[(?P<cores>[^\]]*)\]")
-# dual-GPC boards (AGX Orin) report GR3D_FREQ as N%@[F,F, ...] — one frequency per GPC; \d+%@\[?\d+\]? alone
+# dual-GPC boards (AGX Orin) report GR3D_FREQ as N%@[F,F, ...], one frequency per GPC; \d+%@\[?\d+\]? alone
 # can't cross the comma, so the bracketed comma-list form is tried first.
 _UNIT = re.compile(r"(?P<name>[A-Z0-9_]+)\s+(?P<val>\d+%@\[[\d,]+\]|\d+%@\[?\d+\]?|\d+%|off|\d+)(?=\s|$)")
 

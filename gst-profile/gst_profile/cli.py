@@ -260,7 +260,7 @@ def _capture(session, cmd, mode, args, caps=None) -> int:
             broker.publish("status", {"state": "done"}, sticky=True)
             if hold and not stopping["flag"]:
                 url_host = "127.0.0.1" if args.host in ("0.0.0.0", "::") else args.host
-                print(f"gst-profile: capture done — live view held at http://{url_host}:{server.port} for {int(hold)}s (Ctrl-C to exit now)", file=sys.stderr)
+                print(f"gst-profile: capture done, live view held at http://{url_host}:{server.port} for {int(hold)}s (Ctrl-C to exit now)", file=sys.stderr)
                 deadline = time.monotonic() + hold
                 try:
                     while time.monotonic() < deadline and not stopping["flag"]:

@@ -1,5 +1,5 @@
 /* gst-profile panel. Instrument chrome: quiet surfaces, monospace data, one saturated
-   identity — vendor green on the hardware path. Colors are semantic tokens; the
+   identity: vendor green on the hardware path. Colors are semantic tokens; the
    memory-domain set (#76B900 / #8f6af2 / #8b93a1) is CVD-validated on both surfaces. */
 :root {
   --bg: #0e1116; --surface: #161b22; --surface2: #1c232d; --border: #262d38;

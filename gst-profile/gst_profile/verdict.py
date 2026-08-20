@@ -26,7 +26,7 @@ def render_text(a, findings: List) -> str:
     lines.append("")
     for f in findings:
         tag = {"high": "!!", "medium": "! ", "info": "  "}[f.severity]
-        heur = "  (heuristic — not yet bench-verified)" if f.heuristic and f.severity == "info" and f.rule not in ("HOT", "OK") else ""
+        heur = "  (heuristic, not yet bench-verified)" if f.heuristic and f.severity == "info" and f.rule not in ("HOT", "OK") else ""
         lines.append(f"  {tag}[{f.severity:<6}] {f.rule:<5} {f.title}{heur}")
         lines.append(f"          why: {f.why}")
         lines.append(f"          fix: {f.fix_text}")

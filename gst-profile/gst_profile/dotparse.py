@@ -121,7 +121,7 @@ def parse_dot(text: str) -> DotGraph:
         if src and dst:
             # a ( ... ) bin's ghost pad and its internal proxypad are not the real element on the other
             # side of the boundary; emitting them would create a phantom link. Full collapse onto the
-            # logical link is deferred to Plan 2 — for now just don't emit the phantom.
+            # logical link is deferred to Plan 2; for now just don't emit the phantom.
             if src.name.startswith(("ghost", "proxypad")) or dst.name.startswith(("ghost", "proxypad")):
                 continue
             g.links.append(DotLink(src_pad=f"{src.element}:{src.name}", sink_pad=f"{dst.element}:{dst.name}", caps=caps))
