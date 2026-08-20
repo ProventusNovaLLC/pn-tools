@@ -1,7 +1,7 @@
 """Deterministic, explainable rules over an Analysis. Each rule: id, needs, evaluate -> [Finding].
 Severity gate: only rules whose `verified_on` is non-empty (bench-verified, Plan 4) may emit
 high/medium; until then every diagnostic finding ships `info` + heuristic. HOT/OK are measurement,
-not heuristics — they always emit at their designed level."""
+not heuristics; they always emit at their designed level."""
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -41,7 +41,7 @@ class Finding:
 # Verified 2026-08-19 on an Orin NX / L4T R36.4.3 (JP6), GStreamer 1.20.3: each bad pipeline
 # yielded exactly this finding and its good twin came back clean. SYNC and STALL are NOT here:
 # SYNC's sync=true is invisible to a run-mode dot dump (it is the GstBaseSink param-spec default,
-# so it is never recorded as a non-default prop) — needs a rule-logic fix; STALL did not reproduce
+# so it is never recorded as a non-default prop), needs a rule-logic fix; STALL did not reproduce
 # cleanly from a drop-from-start pipeline. Both stay honest heuristics.
 VERIFIED_RULES: Dict[str, List[str]] = {
     "ZC": ["orin-nx-jp6-r36.4"],
@@ -197,7 +197,7 @@ class QueueRule(Rule):
 
 
 class SyncRule(Rule):
-    """A live sink with sync=true holds each buffer to the clock — adds a frame of latency on a live path."""
+    """A live sink with sync=true holds each buffer to the clock, adds a frame of latency on a live path."""
     id = "SYNC"
     def evaluate(self, a):
         out = []
@@ -328,7 +328,7 @@ class CpuSaturationRule(Rule):
 
 
 class HwSaturationRule(Rule):
-    """A hardware unit (NVENC/GR3D/EMC) pegged — context for the hot element."""
+    """A hardware unit (NVENC/GR3D/EMC) pegged: context for the hot element."""
     id = "HW"
     needs = ["tegrastats"]
     def evaluate(self, a):
@@ -357,7 +357,7 @@ def run_rules(a, rules=None) -> List[Finding]:
             for f in r.evaluate(a):
                 f.severity, f.heuristic, f.verified_on = _gate(f.rule, f.severity)
                 findings.append(f)
-    # OK is a "nothing to fix here" statement — drop it if ANY diagnostic finding fired
+    # OK is a "nothing to fix here" statement; drop it if ANY diagnostic finding fired
     # (even an info-level heuristic), so the verdict never contradicts itself.
     worst = {"high": 3, "medium": 2, "info": 1}
     if any(f.rule not in ("HOT", "OK") for f in findings):

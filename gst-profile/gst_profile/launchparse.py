@@ -4,7 +4,7 @@ Bare caps (`! video/x-raw,format=NV12 !`) become `capsfilterN` elements exactly 
 gst-launch materialises them, so static and runtime graphs line up.
 Supported: `elem prop=val ... ! elem ! caps,filter ! ...`, `name=` , tee/named
 branches (`t. ! ...`), quoted values. Not supported in v1: parentheses/bins,
-`elem.pad ! ` pad-specific links beyond `name.` — the parser records an
+`elem.pad ! ` pad-specific links beyond `name.`; the parser records an
 `unsupported` note instead of failing, and rules simply see less.
 """
 import re
@@ -93,7 +93,7 @@ def parse_launch(launch: str, platform: str = "generic") -> Tuple[Graph, List[st
                 pending_caps = None
         prev_pad = f"{name}:src"
         i = j
-    # sources have no sink pad, sinks no src pad — tidy for from_launch graphs
+    # sources have no sink pad, sinks no src pad; tidy for from_launch graphs
     for el in g.elements.values():
         if not g.upstream(el.id):
             el.pads.pop("sink", None)

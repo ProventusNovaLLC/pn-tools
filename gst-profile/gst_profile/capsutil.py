@@ -83,5 +83,5 @@ def memory_domain(caps: Optional[Caps], platform: str = "generic") -> str:
     if any("memory:dmabuf" in f for f in feats):
         return "dmabuf"
     if any(f.startswith("memory:") and "systemmemory" not in f for f in feats):
-        return "unknown"          # some other exotic memory feature (e.g. memory:CUDAMemory) — v1 does not classify
+        return "unknown"          # some other exotic memory feature (e.g. memory:CUDAMemory); v1 does not classify
     return "sysmem"

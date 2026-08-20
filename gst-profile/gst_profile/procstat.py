@@ -1,4 +1,4 @@
-"""CPU sampling from /proc — per thread (GStreamer names streaming threads after
+"""CPU sampling from /proc: per thread (GStreamer names streaming threads after
 their pad, e.g. "videotestsrc0:src", truncated to 15 chars in `comm`), per process,
 and per core. Zero log overhead; replaces the rusage tracer.
 """
@@ -88,7 +88,7 @@ class ProcStat:
                 comms[tid] = comm
                 prev = self._prev_threads.get(tid)
                 # a tid can be recycled between samples: a changed name or a jiffies count that went
-                # backwards means "new thread" — skip it this round, it is measured from the next sample
+                # backwards means "new thread"; skip it this round, it is measured from the next sample
                 if prev is not None and elapsed and elapsed > 0 and j >= prev and self._comm.get(tid) == comm:
                     smp.threads[f"{tid}:{comm}"] = round(100.0 * (j - prev) / self.hz / elapsed, 1)
             self._prev_threads = cur
@@ -98,7 +98,7 @@ class ProcStat:
 
 
 def thread_to_element(comm: str, element_ids) -> Optional[str]:
-    """Map a thread comm ("nvarguscamerasr" — truncated pad name "nvarguscamerasrc0:src") to an element id.
+    """Map a thread comm ("nvarguscamerasr", truncated pad name "nvarguscamerasrc0:src") to an element id.
     Longest element id that the comm starts with, or that starts with the comm (truncation), wins."""
     best = None
     for eid in element_ids:

@@ -76,7 +76,7 @@ def read_file(path: str) -> str:
 def parse_l4t(text: str) -> str:
     """Extract 'MAJOR.REVISION' (e.g. '35.4.1') from /etc/nv_tegra_release content
     (e.g. '# R35 (release), REVISION: 4.1, GCID: ...'). '.*?' crosses the comma between
-    the release marker and REVISION: — a plain [^,]* can't."""
+    the release marker and REVISION:, a plain [^,]* can't."""
     mm = re.search(r"R(\d+).*?REVISION:\s*([\d.]+)", text)
     return f"{mm.group(1)}.{mm.group(2)}" if mm else ""
 

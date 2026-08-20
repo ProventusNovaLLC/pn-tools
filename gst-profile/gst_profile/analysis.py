@@ -1,4 +1,4 @@
-"""Analysis: a loaded session made convenient for rules — precomputed per-element/link/pipeline
+"""Analysis: a loaded session made convenient for rules, precomputed per-element/link/pipeline
 aggregates over the whole run (or the live window). Rules read this, never the raw columnar series."""
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
@@ -99,11 +99,11 @@ class Analysis:
         return None
 
     def real_elements(self) -> List[ElementStat]:
-        """Non-bin elements only — rules iterate these."""
+        """Non-bin elements only; rules iterate these."""
         return [e for e in self.elements.values() if not e.is_bin]
 
     def hot_share(self) -> List[tuple]:
-        """(element_id, proc_ms_p95, share_of_sum) sorted desc — the profile itself."""
+        """(element_id, proc_ms_p95, share_of_sum) sorted desc: the profile itself."""
         rows = [(e.id, e.proc_ms_p95 or 0.0) for e in self.real_elements() if e.proc_ms_p95]
         total = sum(v for _, v in rows) or 1.0
         return sorted(((eid, v, 100.0 * v / total) for eid, v in rows), key=lambda r: -r[1])
