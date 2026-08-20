@@ -247,8 +247,8 @@ class StallRule(Rule):
                     title=("Source starvation at " + l.src_el) if is_source else (l.src_el + " stopped producing buffers"),
                     targets={"elements": [l.src_el], "links": [l.id]},
                     evidence={"link": l.id},
-                    why="Data stopped flowing across this link mid-capture — upstream is not delivering buffers.",
-                    fix_text=("Check the sensor/driver bring-up (see the camera-bringup-debug skill) — the source stopped delivering." if is_source
+                    why="Data stopped flowing across this link mid-capture; upstream is not delivering buffers.",
+                    fix_text=("Check the sensor/driver bring-up (see the camera-bringup-debug skill); the source stopped delivering." if is_source
                               else f"Investigate why {l.src_el} stopped producing; a downstream block-and-wait or an internal error is typical.")))
         return out
 

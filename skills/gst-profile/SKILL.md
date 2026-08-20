@@ -150,10 +150,10 @@ gst-launch string, so `run` rather than `wrap`:
 $ gst-profile run "videotestsrc is-live=true ! video/x-raw,format=NV12,width=1920,height=1080,framerate=30/1 ! nvvidconv ! video/x-raw(memory:NVMM) ! nvvidconv ! video/x-raw,format=I420,width=1280,height=720 ! videoconvert ! video/x-raw,format=NV12 ! nvvidconv ! video/x-raw(memory:NVMM) ! nvv4l2h264enc ! h264parse ! fakesink sync=false" --duration 30s --no-ui
 ```
 
-Verdict (this is a real transcript — the output of `gst-profile analyze`
+Verdict (this is a real transcript, the output of `gst-profile analyze`
 against the recorded session for the exact command above, at
 `gst-profile/tests/fixtures/orin-nx-jp6-zc-break.json`; element names and
-wording come from the tool, not this doc — your own pipeline will name
+wording come from the tool, not this doc; your own pipeline will name
 different elements):
 
 ```

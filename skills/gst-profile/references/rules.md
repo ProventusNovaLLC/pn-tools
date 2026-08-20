@@ -46,12 +46,12 @@ platform it happens to run against.
 Two honest limits, verbatim from `gst-profile/README.md`:
 
 > Two honest limits worth knowing: **SYNC** (`sync=true` on a live sink)
-> can't yet be detected from a `run`-mode capture — `sync=true` is the
+> can't yet be detected from a `run`-mode capture: `sync=true` is the
 > `GstBaseSink` default, so a dot dump never records it as a set property;
 > that needs a rule-logic revision, so SYNC stays heuristic. And on L4T
 > R36, `tegrastats` reports no per-engine load for NVENC/NVDEC/VIC (only
-> GPU, CPU, thermals, power) — that utilization number isn't exposed
-> anywhere on the platform — so the **VIC**/**HW** rules and the
+> GPU, CPU, thermals, power). That utilization number isn't exposed
+> anywhere on the platform, so the **VIC**/**HW** rules and the
 > encoder-engine signal stay heuristic, and the System tab shows "not
 > available on this board" for those lanes.
 
@@ -301,11 +301,11 @@ source.
 
 **Emits:** `{"link": <link id>}`.
 
-**Why it matters:** "Data stopped flowing across this link mid-capture —
+**Why it matters:** "Data stopped flowing across this link mid-capture;
 upstream is not delivering buffers."
 
 **Fix:** two variants depending on `is_source`. Source case: "Check the
-sensor/driver bring-up (see the camera-bringup-debug skill) — the source
+sensor/driver bring-up (see the camera-bringup-debug skill); the source
 stopped delivering." Non-source case: "Investigate why `<src>` stopped
 producing; a downstream block-and-wait or an internal error is typical."
 No `fix_patch`.

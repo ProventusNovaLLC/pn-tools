@@ -99,7 +99,7 @@ def check(run: Runner = _run, which=shutil.which) -> Capabilities:
     c.stats = "stats" in c.tracers or not c.tracers
     c.element_latency = _version_tuple(c.gstreamer) >= (1, 18, 0)
     if c.gstreamer and not c.element_latency:
-        c.problems.append(f"GStreamer {c.gstreamer}: per-element latency needs >= 1.18 — HOT ranks by CPU/fps instead")
+        c.problems.append(f"GStreamer {c.gstreamer}: per-element latency needs >= 1.18; HOT ranks by CPU/fps instead")
     c.tegrastats = which("tegrastats") is not None
     model = read_file("/proc/device-tree/model") or read_file("/sys/firmware/devicetree/base/model")
     c.board = model
