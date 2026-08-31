@@ -1,0 +1,434 @@
+{
+ "schema": "gst-profile/1",
+ "session": {
+  "id": "synth-zc",
+  "started": "2026-08-18T00:00:00Z",
+  "duration_s": 5.0,
+  "mode": "run",
+  "launch": null,
+  "command": null,
+  "label": "",
+  "parent_session": null,
+  "notes": []
+ },
+ "target": {
+  "gstreamer": "1.20.0",
+  "platform": "jetson",
+  "board": "Orin NX",
+  "l4t": "36.4",
+  "python": "3.10",
+  "sources_present": [
+   "tracer-log",
+   "dot",
+   "procstat",
+   "tegrastats"
+  ],
+  "sources_missing": [],
+  "capabilities": {
+   "element_latency": true,
+   "stats": true,
+   "queue_levels": false,
+   "tegrastats": true
+  }
+ },
+ "graph": {
+  "elements": [
+   {
+    "id": "nvarguscamerasrc0",
+    "factory": "nvarguscamerasrc",
+    "gtype": "GstNvArgusCameraSrc",
+    "vendor": "nvidia",
+    "klass": "",
+    "props": {},
+    "bin": null,
+    "is_bin": false,
+    "pads": {
+     "src": "src"
+    }
+   },
+   {
+    "id": "videoconvert0",
+    "factory": "videoconvert",
+    "gtype": "GstVideoConvert",
+    "vendor": "generic",
+    "klass": "",
+    "props": {},
+    "bin": null,
+    "is_bin": false,
+    "pads": {
+     "sink": "sink",
+     "src": "src"
+    }
+   },
+   {
+    "id": "nvvidconv0",
+    "factory": "nvvidconv",
+    "gtype": "GstNvVidConv",
+    "vendor": "nvidia",
+    "klass": "",
+    "props": {},
+    "bin": null,
+    "is_bin": false,
+    "pads": {
+     "sink": "sink",
+     "src": "src"
+    }
+   },
+   {
+    "id": "nvv4l2h264enc0",
+    "factory": "nvv4l2h264enc",
+    "gtype": "GstNvV4l2H264Enc",
+    "vendor": "nvidia",
+    "klass": "",
+    "props": {
+     "bframes": "2",
+     "insert-sps-pps": "false"
+    },
+    "bin": null,
+    "is_bin": false,
+    "pads": {
+     "sink": "sink",
+     "src": "src"
+    }
+   },
+   {
+    "id": "udpsink0",
+    "factory": "udpsink",
+    "gtype": "GstUDPSink",
+    "vendor": "generic",
+    "klass": "",
+    "props": {
+     "sync": "true"
+    },
+    "bin": null,
+    "is_bin": false,
+    "pads": {
+     "sink": "sink"
+    }
+   }
+  ],
+  "links": [
+   {
+    "id": "nvarguscamerasrc0:src->videoconvert0:sink",
+    "src": "nvarguscamerasrc0:src",
+    "sink": "videoconvert0:sink",
+    "caps": "",
+    "memory": "nvmm",
+    "format": "NV12",
+    "media": "video/x-raw"
+   },
+   {
+    "id": "videoconvert0:src->nvvidconv0:sink",
+    "src": "videoconvert0:src",
+    "sink": "nvvidconv0:sink",
+    "caps": "",
+    "memory": "sysmem",
+    "format": "I420",
+    "media": "video/x-raw"
+   },
+   {
+    "id": "nvvidconv0:src->nvv4l2h264enc0:sink",
+    "src": "nvvidconv0:src",
+    "sink": "nvv4l2h264enc0:sink",
+    "caps": "",
+    "memory": "nvmm",
+    "format": "NV12",
+    "media": "video/x-raw"
+   },
+   {
+    "id": "nvv4l2h264enc0:src->udpsink0:sink",
+    "src": "nvv4l2h264enc0:src",
+    "sink": "udpsink0:sink",
+    "caps": "",
+    "memory": "sysmem",
+    "format": null,
+    "media": "video/x-h264"
+   }
+  ]
+ },
+ "series": {
+  "window_ms": 250,
+  "t": [
+   0.0,
+   0.25,
+   0.5,
+   0.75,
+   1.0
+  ],
+  "elements": {
+   "nvarguscamerasrc0": {
+    "proc_ms_p50": [
+     1,
+     1,
+     1,
+     1,
+     1
+    ],
+    "proc_ms_p95": [
+     1.2,
+     1.2,
+     1.2,
+     1.2,
+     1.2
+    ],
+    "cpu_pct": [
+     5,
+     5,
+     5,
+     5,
+     5
+    ],
+    "queue_level": [
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "buffers": [
+     8,
+     8,
+     8,
+     8,
+     8
+    ]
+   },
+   "videoconvert0": {
+    "proc_ms_p50": [
+     8,
+     8,
+     8,
+     8,
+     8
+    ],
+    "proc_ms_p95": [
+     9,
+     9,
+     9,
+     9,
+     9
+    ],
+    "cpu_pct": [
+     92,
+     93,
+     92,
+     93,
+     92
+    ],
+    "queue_level": [
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "buffers": [
+     8,
+     8,
+     8,
+     8,
+     8
+    ]
+   },
+   "nvvidconv0": {
+    "proc_ms_p50": [
+     1,
+     1,
+     1,
+     1,
+     1
+    ],
+    "proc_ms_p95": [
+     2,
+     2,
+     2,
+     2,
+     2
+    ],
+    "cpu_pct": [
+     3,
+     3,
+     3,
+     3,
+     3
+    ],
+    "queue_level": [
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "buffers": [
+     8,
+     8,
+     8,
+     8,
+     8
+    ]
+   },
+   "nvv4l2h264enc0": {
+    "proc_ms_p50": [
+     2,
+     2,
+     2,
+     2,
+     2
+    ],
+    "proc_ms_p95": [
+     3,
+     3,
+     3,
+     3,
+     3
+    ],
+    "cpu_pct": [
+     5,
+     5,
+     5,
+     5,
+     5
+    ],
+    "queue_level": [
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    "buffers": [
+     8,
+     8,
+     8,
+     8,
+     8
+    ]
+   }
+  },
+  "links": {
+   "nvarguscamerasrc0:src->videoconvert0:sink": {
+    "fps": [
+     30,
+     30,
+     30,
+     30,
+     30
+    ],
+    "bytes_s": [
+     1,
+     1,
+     1,
+     1,
+     1
+    ],
+    "stalled": [
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "videoconvert0:src->nvvidconv0:sink": {
+    "fps": [
+     30,
+     30,
+     30,
+     30,
+     30
+    ],
+    "bytes_s": [
+     1,
+     1,
+     1,
+     1,
+     1
+    ],
+    "stalled": [
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   }
+  },
+  "pipeline": {
+   "latency_ms_p50": [
+    18,
+    18,
+    18,
+    18,
+    18
+   ],
+   "latency_ms_p95": [
+    20,
+    20,
+    20,
+    20,
+    20
+   ],
+   "reported_latency_ms": [
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  "system": {
+   "cpu_pct_per_core": [
+    [],
+    [],
+    [],
+    [],
+    []
+   ],
+   "cpu_pct": [
+    60,
+    60,
+    60,
+    60,
+    60
+   ],
+   "gr3d_pct": [
+    30,
+    30,
+    30,
+    30,
+    30
+   ],
+   "vic_pct": [
+    85,
+    86,
+    85,
+    86,
+    85
+   ],
+   "nvenc_pct": [
+    40,
+    40,
+    40,
+    40,
+    40
+   ],
+   "nvdec_pct": [
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "emc_pct": [
+    50,
+    50,
+    50,
+    50,
+    50
+   ]
+  }
+ },
+ "threads": {},
+ "findings": [],
+ "events": []
+}
